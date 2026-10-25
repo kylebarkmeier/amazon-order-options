@@ -1,0 +1,81 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon Order Options",
+  "version": "1.0.0",
+  "description": "Shows the size, color and other selected options for items on Amazon order and return pages.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.amazon.com/*",
+    "https://*.amazon.co.uk/*",
+    "https://*.amazon.ca/*",
+    "https://*.amazon.de/*",
+    "https://*.amazon.fr/*",
+    "https://*.amazon.it/*",
+    "https://*.amazon.es/*",
+    "https://*.amazon.nl/*",
+    "https://*.amazon.se/*",
+    "https://*.amazon.pl/*",
+    "https://*.amazon.ie/*",
+    "https://*.amazon.com.be/*",
+    "https://*.amazon.co.jp/*",
+    "https://*.amazon.com.au/*",
+    "https://*.amazon.in/*",
+    "https://*.amazon.sg/*",
+    "https://*.amazon.ae/*",
+    "https://*.amazon.sa/*",
+    "https://*.amazon.com.tr/*",
+    "https://*.amazon.eg/*",
+    "https://*.amazon.com.mx/*",
+    "https://*.amazon.com.br/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.amazon.com/*",
+        "https://*.amazon.co.uk/*",
+        "https://*.amazon.ca/*",
+        "https://*.amazon.de/*",
+        "https://*.amazon.fr/*",
+        "https://*.amazon.it/*",
+        "https://*.amazon.es/*",
+        "https://*.amazon.nl/*",
+        "https://*.amazon.se/*",
+        "https://*.amazon.pl/*",
+        "https://*.amazon.ie/*",
+        "https://*.amazon.com.be/*",
+        "https://*.amazon.co.jp/*",
+        "https://*.amazon.com.au/*",
+        "https://*.amazon.in/*",
+        "https://*.amazon.sg/*",
+        "https://*.amazon.ae/*",
+        "https://*.amazon.sa/*",
+        "https://*.amazon.com.tr/*",
+        "https://*.amazon.eg/*",
+        "https://*.amazon.com.mx/*",
+        "https://*.amazon.com.br/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "action": {
+    "default_title": "Amazon Order Options",
+    "default_popup": "options.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

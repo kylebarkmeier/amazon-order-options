@@ -1,0 +1,65 @@
+name: Bug report
+description: The badge is missing, wrong, or breaks a page
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste order numbers, names, addresses or full page HTML. Describe the page and the item instead.
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      options:
+        - Chrome extension
+        - Firefox extension (desktop)
+        - Firefox extension (Android)
+        - Other Chromium browser extension (Edge, Brave, Kiwi, ...)
+        - Tampermonkey / userscript
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 131 on Android 14
+    validations:
+      required: true
+  - type: dropdown
+    id: page
+    attributes:
+      label: Which page?
+      options:
+        - Orders list (Your Orders)
+        - Order details
+        - Return cart (choosing items / reason / method)
+        - Return status / label page
+        - Your Returns list
+        - Other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: domain
+    attributes:
+      label: Amazon site
+      placeholder: amazon.com, amazon.co.uk, ...
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect to see, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: item
+    attributes:
+      label: What kind of item?
+      description: For example "a hoodie that comes in sizes and colours, title ends with '- M'". A product link is fine.
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Open the browser console on the page and paste anything that mentions aoo or the extension.
+      render: text
