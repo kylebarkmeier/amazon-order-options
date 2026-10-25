@@ -17,7 +17,7 @@ Node 20 or newer is required. The project has no runtime dependencies.
 | `npm run build` | Builds `dist/chrome`, `dist/firefox` and `dist/userscript` |
 | `npm run package` | Builds and zips the extensions for upload |
 | `npm run lint` | ESLint over `src`, `scripts` and `tests` |
-| `npm run lint:webext` | Mozilla's `web-ext lint` over the Firefox build |
+| `npm run lint:webext` | Mozilla's `addons-linter` over the Firefox build; warnings fail it |
 | `npm run test:unit` | Vitest with coverage; thresholds are enforced |
 | `npm run test:unit:watch` | Vitest in watch mode |
 | `npm run test:e2e` | Playwright against the built extension and userscript |
@@ -85,12 +85,28 @@ fast and the same code runnable as a userscript.
 
 ## Branch protection
 
-`main` is configured with:
+`main` is governed by a ruleset applied with `scripts/setup-github.sh`:
 
-- required status check: **CI passed**
-- required review from a code owner
-- linear history (squash merge only)
+- pull requests only, squash merges, linear history, signed commits
 - no force pushes, no deletions
+- required checks: **CI passed**, **Conventional title**, **Dependency
+  review**, **Changelog updated**, **Analyze (javascript-typescript)**
+- review from a code owner, with all review threads resolved
+- no new high-severity CodeQL alerts
+
+`v*` tags are protected too: admins only, never moved or deleted. The full
+list of controls, and the steps that need a person, is in
+[docs/github-security.md](docs/github-security.md).
+
+## Dependencies
+
+There are no runtime dependencies. Dev dependencies are installed with
+`npm ci` and install scripts are disabled by `.npmrc`, so a package cannot run
+code on your machine at install time. GitHub Actions are pinned to commit
+SHAs; Dependabot opens PRs to move them. When adding a dependency, prefer
+none, then one with no transitive dependencies, and expect the dependency
+review check to reject anything with a known vulnerability or a copyleft
+licence.
 
 ## Releasing
 

@@ -6,6 +6,14 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Firefox 140 or newer is required (142 on Android), because the manifest
+  declares that the extension collects no data, which older versions do not
+  understand.
+- Release assets now come with SHA-256 checksums and signed build provenance
+  attestations.
+
 ## [1.0.0] - 2026-10-25
 
 ### Added

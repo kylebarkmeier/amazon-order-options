@@ -36,7 +36,7 @@ async function buildExtension(target) {
     },
     bundle: true,
     format: 'iife',
-    target: target === 'firefox' ? ['firefox115'] : ['chrome110'],
+    target: target === 'firefox' ? ['firefox140'] : ['chrome110'],
     outdir: out,
     sourcemap: false,
     minify: false,

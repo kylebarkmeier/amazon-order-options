@@ -6,8 +6,15 @@ name: Release
 #   amazon-order-options-firefox-<version>.zip   Firefox source zip (for AMO upload or temporary load)
 #   amazon-order-options-firefox-<version>.xpi   signed Firefox add-on, only when AMO secrets are set
 #   amazon-order-options.user.js                 Tampermonkey / Violentmonkey / Greasemonkey script
+#   *.sha256                                     checksums for every asset above
 #
-# The userscript's @updateURL points at the "latest" alias of this asset, so
+# Every asset also gets a signed build provenance attestation (SLSA), which
+# anyone can verify with `gh attestation verify <file> --owner <owner>`.
+#
+# The job runs in the "release" environment. If that environment has required
+# reviewers (see scripts/setup-github.sh), the publish waits for approval.
+#
+# The userscript's @updateURL points at the "latest" alias of its asset, so
 # userscript managers update themselves after every release.
 
 on:
@@ -15,18 +22,24 @@ on:
     tags:
       - 'v*.*.*'
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     name: Build, check and publish
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       VERSION: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -52,7 +65,9 @@ jobs:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
         run: |
-          npx web-ext sign \
+          # web-ext is fetched here on demand rather than kept as a dev dependency:
+          # its Android tooling drags in packages with open advisories.
+          npx --yes web-ext@10.8.0 sign \
             --source-dir dist/firefox \
             --artifacts-dir dist/signed \
             --channel unlisted \
@@ -62,11 +77,34 @@ jobs:
           cp "$xpi" "dist/amazon-order-options-firefox-${VERSION#v}.xpi"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Collect release assets and write checksums
+        id: assets
+        run: |
+          mkdir -p release
+          cp "dist/amazon-order-options-chrome-${VERSION#v}.zip" release/
+          cp "dist/amazon-order-options-firefox-${VERSION#v}.zip" release/
+          cp dist/amazon-order-options.user.js release/
+          if [ -f "dist/amazon-order-options-firefox-${VERSION#v}.xpi" ]; then
+            cp "dist/amazon-order-options-firefox-${VERSION#v}.xpi" release/
+          fi
+          (cd release && for f in *; do sha256sum "$f" > "$f.sha256"; done)
+          ls -l release
+
+      - name: Attest build provenance for the release assets
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: |
+            release/*.zip
+            release/*.xpi
+            release/*.user.js
+
       - name: Write release notes
+        env:
+          REPO: ${{ github.repository }}
+          SIGNED: ${{ steps.sign.outputs.signed }}
         run: |
           version="${VERSION#v}"
-          repo="${{ github.repository }}"
-          base="https://github.com/$repo/releases/download/$VERSION"
+          base="https://github.com/$REPO/releases/download/$VERSION"
           {
             awk -v ver="$version" '
               $0 ~ "^## \\[" ver "\\]" { found=1; next }
@@ -81,7 +119,7 @@ jobs:
             echo "2. Open \`chrome://extensions\`, turn on Developer mode, choose **Load unpacked**, pick the folder."
             echo
             echo "**Firefox (desktop and Android)**"
-            if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            if [ "$SIGNED" = "true" ]; then
               echo "- Download [amazon-order-options-firefox-$version.xpi]($base/amazon-order-options-firefox-$version.xpi). Desktop: open the file in Firefox and approve the install. Android: enable the debug menu (Settings, About Firefox, tap the logo five times), then Settings, Install extension from file."
             else
               echo "- Download [amazon-order-options-firefox-$version.zip]($base/amazon-order-options-firefox-$version.zip). Desktop: \`about:debugging#/runtime/this-firefox\`, **Load Temporary Add-on**, pick the zip. For a permanent install the zip must be signed by AMO; see the README."
@@ -89,6 +127,15 @@ jobs:
             echo
             echo "**Tampermonkey, Violentmonkey, Greasemonkey**"
             echo "- Open [amazon-order-options.user.js]($base/amazon-order-options.user.js) and confirm the install. Updates arrive automatically."
+            echo
+            echo "## Verify"
+            echo
+            echo "Each asset has a \`.sha256\` file and a signed build provenance attestation:"
+            echo
+            echo '```'
+            echo "sha256sum -c amazon-order-options-chrome-$version.zip.sha256"
+            echo "gh attestation verify amazon-order-options-chrome-$version.zip --owner ${REPO%%/*}"
+            echo '```'
           } > release-notes.md
           cat release-notes.md
 
@@ -96,12 +143,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          assets="dist/amazon-order-options-chrome-${VERSION#v}.zip dist/amazon-order-options-firefox-${VERSION#v}.zip dist/amazon-order-options.user.js"
-          if [ -f "dist/amazon-order-options-firefox-${VERSION#v}.xpi" ]; then
-            assets="$assets dist/amazon-order-options-firefox-${VERSION#v}.xpi"
-          fi
           gh release create "$VERSION" \
             --title "$VERSION" \
             --notes-file release-notes.md \
             --latest \
-            $assets
+            --verify-tag \
+            release/*
