@@ -13,14 +13,15 @@
     </div>
   </div>
 
-  <script type="a-state" data-a-state='{"key":"jnmexampleitem-NkxXhfnQn-self_serviceable"}'>{"jnmexampleitem-NkxXhfnQn-self_serviceable":{"orderId":"111-2222222-3333333","subUnitIds":"[]"}}</script>
+  <script type="a-state" data-a-state='{"key":"jnmbodywashaaaa-NkxXhfnQn-self_serviceable"}'>{"jnmbodywashaaaa-NkxXhfnQn-self_serviceable":{"orderId":"111-2222222-3333333","subUnitIds":"[]"}}</script>
 
   <div id="items-section-grid" class="a-row a-spacing-small">
     <div class="a-column a-span12 a-color-base-background">
       <div id="items-expanded-section" class="a-section a-padding-medium">
         <div class="a-section a-spacing-extra-large"><span class="a-size-large a-text-bold">How many of this item are you returning?</span></div>
 
-        <!-- Item with a structured size row visible and a hidden details popover -->
+        <!-- Item with a structured size row visible and a hidden details popover.
+             The popover id carries Amazon's line item id. -->
         <div class="a-row">
           <div class="a-column a-span5">
             <div class="a-row a-grid-vertical-align a-grid-center">
@@ -29,7 +30,7 @@
                   <div class="a-row"><img src="https://m.media-amazon.com/images/I/61bodyWashXL._AC_._SS160_.jpg" alt=""></div>
                   <div class="a-row">
                     <span class="a-declarative"><a class="a-popover-trigger a-declarative" href="#"><span class="a-size-small">Details</span><i class="a-icon a-icon-popover"></i></a></span>
-                    <div id="a-popover-jnmexampleitem-NkxXhfnQn-self_serviceable-itemDetails-popover" class="a-popover-preload">
+                    <div id="a-popover-jnmbodywashaaaa-NkxXhfnQn-self_serviceable-itemDetails-popover" class="a-popover-preload">
                       <h4 class="a-size-medium">Mirai Clinical Persimmon Body Wash for...</h4>
                       <ul class="a-unordered-list a-nostyle a-vertical">
                         <li><span class="a-list-item"><div class="a-row"><span class="a-size-small"> Size:  </span><span class="a-size-small"> 9.30 Fl Oz (Pack of 1) </span></div></span></li>
@@ -54,16 +55,44 @@
           </div>
         </div>
 
-        <!-- Clothing item with no size row: only the truncated title and a hidden details popover without size -->
+        <!-- Two sizes of the same romper in the same colour: identical image, identical truncated
+             title, no size row. Only the line item id in the popover tells them apart. -->
         <div class="a-row">
           <div class="a-column a-span5">
             <div class="a-row a-grid-vertical-align a-grid-center">
               <div class="a-column a-span3">
                 <div class="a-section a-padding-mini a-text-center">
-                  <div class="a-row"><img src="https://m.media-amazon.com/images/I/71romperMedL._AC_._SS160_.jpg" alt=""></div>
+                  <div class="a-row"><img src="https://m.media-amazon.com/images/I/71romperPnkL._AC_._SS160_.jpg" alt=""></div>
                   <div class="a-row">
                     <span class="a-declarative"><a class="a-popover-trigger a-declarative" href="#"><span class="a-size-small">Details</span></a></span>
-                    <div id="a-popover-jnmromperitem-NWZJVBrZ3-self_serviceable-itemDetails-popover" class="a-popover-preload">
+                    <div id="a-popover-jnmrompermedaaa-NWZJVBrZ3-self_serviceable-itemDetails-popover" class="a-popover-preload">
+                      <h4 class="a-size-medium">Care Bears Cheer Bear Romper Women's...</h4>
+                      <ul class="a-unordered-list a-nostyle a-vertical">
+                        <li><span class="a-list-item"><div class="a-row"><span class="a-size-small"> Order #:  </span><span class="a-size-small"> 111-2222222-3333333 </span></div></span></li>
+                        <li><span class="a-list-item"><div class="a-row"><span class="a-size-small"> Sold by:  </span><span class="a-size-small"> HalloweenCostumes </span></div></span></li>
+                        <li><span class="a-list-item"><div class="a-row"><span class="a-size-small"> Quantity:  </span><span class="a-size-small"> 1 </span></div></span></li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="a-column a-span8 a-spacing-top-small a-span-last">
+                <div class="a-row"><span class="a-size-base a-text-bold">Care Bears Cheer Bear Romper Women's...</span></div>
+                <div class="a-row"><span class="a-size-small">$49.99</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="a-row">
+          <div class="a-column a-span5">
+            <div class="a-row a-grid-vertical-align a-grid-center">
+              <div class="a-column a-span3">
+                <div class="a-section a-padding-mini a-text-center">
+                  <div class="a-row"><img src="https://m.media-amazon.com/images/I/71romperPnkL._AC_._SS160_.jpg" alt=""></div>
+                  <div class="a-row">
+                    <span class="a-declarative"><a class="a-popover-trigger a-declarative" href="#"><span class="a-size-small">Details</span></a></span>
+                    <div id="a-popover-jnmromperlrgaaa-NWSp2mLw3-self_serviceable-itemDetails-popover" class="a-popover-preload">
                       <h4 class="a-size-medium">Care Bears Cheer Bear Romper Women's...</h4>
                       <ul class="a-unordered-list a-nostyle a-vertical">
                         <li><span class="a-list-item"><div class="a-row"><span class="a-size-small"> Order #:  </span><span class="a-size-small"> 111-2222222-3333333 </span></div></span></li>

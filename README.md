@@ -89,24 +89,38 @@ and `amazon-order-options.user.js`.
 
 ## How it works
 
-For each item card on a supported page the content script tries, in order:
+For each item card on a supported page the content script combines these
+sources:
 
 1. **Hints already on the page.** Return pages often include a "Details"
-   popover or a hidden block with `Size:` and `Color:` rows. These are read in
-   place and shown under the title. No network request.
-2. **The product page.** Order pages link each item to the exact variation's
-   ASIN. The product page for that ASIN embeds the twister data that maps every
-   ASIN in the family to its display values (`"B0...": ["M","Pink"]`) along with
-   labels. One same-origin fetch per ASIN, cached for seven days.
-3. **The order page, then the product page.** Return pages do not expose the
-   ASIN at all. They do show the order number and the product image. The order
-   details page is fetched once per order (cached one day), the item is matched
-   by Amazon's image id, and its ASIN is looked up as in step 2.
-4. **The title.** If nothing else works and the title ends in something like
-   `- M` or `(Small/Medium)`, that is shown and marked "(from title)".
+   popover or a hidden block with `Size:` and `Color:` rows. Only labels
+   Amazon uses for variations are accepted, in the languages of all supported
+   marketplaces, so order metadata never turns into a badge.
+2. **The order page.** Return pages do not link the item's ASIN, but they
+   carry Amazon's order line item id in the ids of the "Details" popover and
+   in the URL, and the order details page links each item's line item id to
+   its ASIN and full title. The order page is fetched once per order (cached
+   one day) and the item matched by that id. Two sizes of one colour share a
+   product image on Amazon, so when only the image is available and it is
+   ambiguous, no guess is made.
+3. **The product page.** With the ASIN known, the product page embeds the
+   twister data that maps every ASIN in the family to its display values
+   (`"B0...": ["M","Pink"]`) along with Amazon's own localized labels. It is
+   requested without your session cookies first, so the lookup does not land
+   in your browsing history; a signed-in request is the fallback. Cached for
+   seven days per marketplace. Pages that are not product pages (a sign-in
+   page, a bot check) are never cached, and a page that redirected to another
+   product is not trusted for this ASIN.
+4. **The title.** If nothing authoritative could be reached and the title ends
+   in something like `- M` or `(Small/Medium)`, that is shown and marked
+   "(from title)". Once the product page has confirmed an item has no
+   variations, nothing is guessed.
 
-Requests use your existing Amazon session and go only to the Amazon domain you
-are on. Fetching can be disabled per source on the options page.
+Truncated titles are replaced with the full title whenever it is known, from
+the order page or from the page's own hidden copy. Items whose lookups failed
+for a transient reason are retried a few times. Requests go only to the Amazon
+domain you are on, a few at a time, and can be disabled per source on the
+options page.
 
 ## Options
 
@@ -117,8 +131,15 @@ Click the toolbar icon, or open the extension's options page:
   heuristics, title expansion
 - **Appearance**: highlighted pills or plain text
 
-Settings are stored in extension storage (Tampermonkey storage for the
-userscript) and apply after reloading the Amazon tab.
+Settings are stored in extension storage and apply after reloading the Amazon
+tab.
+
+The userscript has no options page and runs with the defaults. To change a
+setting there, open the script's **Storage** tab in Tampermonkey or
+Violentmonkey and edit the `aoo:settings` value, which is the same JSON the
+options page writes, for example `{"badgeStyle":"plain","expandTitles":false}`.
+Managers without synchronous `GM_getValue` (Greasemonkey 4) fall back to the
+page's localStorage for both settings and the cache.
 
 ## Privacy and security
 
@@ -137,6 +158,10 @@ and its releases are protected.
 - Items that Amazon sells without a variation family (one ASIN, no sizes) get
   no badge, because there is nothing to show.
 - Very old orders whose product page has been removed fall back to the title.
+- Two sizes of the same colour in one order share a product image. They are
+  told apart by Amazon's line item id, which the return cart and status pages
+  expose. On a page that exposes neither the id nor the ASIN, the item is left
+  without a badge rather than guessed.
 
 ## Development
 

@@ -5,11 +5,15 @@
  *
  *   node scripts/build.mjs            # all targets
  *   node scripts/build.mjs chrome     # one target: chrome | firefox | userscript
+ *
+ * The version comes from package.json and the Amazon host list from
+ * src/core/hosts.js, so neither is repeated in manifest/base.json.
  */
 import { build } from 'esbuild';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AMAZON_MATCH_PATTERNS } from '../src/core/hosts.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
@@ -21,6 +25,18 @@ for (const target of targets) {
   if (target === 'chrome' || target === 'firefox') await buildExtension(target);
   else if (target === 'userscript') await buildUserscript();
   else throw new Error(`Unknown build target: ${target}`);
+}
+
+/**
+ * @param {'chrome'|'firefox'} target
+ * @returns {Promise<object>} the manifest that will be written
+ */
+export async function buildManifest(target) {
+  const base = JSON.parse(await readFile(path.join(root, 'manifest/base.json'), 'utf8'));
+  const extra = JSON.parse(await readFile(path.join(root, `manifest/${target}.json`), 'utf8'));
+  const manifest = { ...base, ...extra, version: pkg.version };
+  manifest.content_scripts = manifest.content_scripts.map((entry) => ({ ...entry, matches: [...AMAZON_MATCH_PATTERNS] }));
+  return manifest;
 }
 
 async function buildExtension(target) {
@@ -41,13 +57,10 @@ async function buildExtension(target) {
     sourcemap: false,
     minify: false,
     legalComments: 'none',
-    define: { __USERSCRIPT__: 'false' },
     logLevel: 'warning',
   });
 
-  const base = JSON.parse(await readFile(path.join(root, 'manifest/base.json'), 'utf8'));
-  const extra = JSON.parse(await readFile(path.join(root, `manifest/${target}.json`), 'utf8'));
-  const manifest = { ...base, ...extra, version: pkg.version };
+  const manifest = await buildManifest(target);
   await writeFile(path.join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
   await cp(path.join(root, 'src/options/options.html'), path.join(out, 'options.html'));
@@ -61,7 +74,7 @@ async function buildUserscript() {
   await mkdir(out, { recursive: true });
 
   const base = JSON.parse(await readFile(path.join(root, 'manifest/base.json'), 'utf8'));
-  const matches = base.content_scripts[0].matches.map((m) => `// @match        ${m}`).join('\n');
+  const matches = AMAZON_MATCH_PATTERNS.map((m) => `// @match        ${m}`).join('\n');
   const header = `// ==UserScript==
 // @name         ${base.name}
 // @namespace    ${pkg.homepage}
@@ -92,7 +105,6 @@ ${matches}
     minify: false,
     legalComments: 'none',
     banner: { js: header },
-    define: { __USERSCRIPT__: 'true' },
     logLevel: 'warning',
   });
   console.log(`built userscript -> ${path.relative(root, out)}/amazon-order-options.user.js`);

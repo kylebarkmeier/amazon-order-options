@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractImageId, imageIdFromElement } from '../../src/core/image-id.js';
+import { extractImageId, imageIdFromImg, imageIdFromElement } from '../../src/core/image-id.js';
 
 describe('extractImageId', () => {
   it.each([
@@ -18,6 +18,23 @@ describe('extractImageId', () => {
     expect(extractImageId('')).toBeNull();
     expect(extractImageId(null)).toBeNull();
     expect(extractImageId('https://m.media-amazon.com/images/I/ab.jpg')).toBeNull();
+  });
+});
+
+describe('imageIdFromImg', () => {
+  it('reads the real URL behind a lazy-loading placeholder', () => {
+    document.body.innerHTML = `
+      <img id="pixel" src="https://m.media-amazon.com/images/G/01/x-locale/common/transparent-pixel._V192234675_.gif" data-src="https://m.media-amazon.com/images/I/71romperPnkL._SS142_.jpg">
+      <img id="data" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-a-hires="https://m.media-amazon.com/images/I/61bodyWashXL._SL1500_.jpg">
+      <img id="set" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="https://m.media-amazon.com/images/I/81shoesGreenL._SS100_.jpg 1x, https://m.media-amazon.com/images/I/81shoesGreenL._SS200_.jpg 2x">
+      <img id="plain" src="https://m.media-amazon.com/images/I/55plainItemL._SS142_.jpg">
+      <img id="none" src="https://m.media-amazon.com/images/G/01/sprite.png">`;
+    expect(imageIdFromImg(document.getElementById('pixel'))).toBe('71romperPnkL');
+    expect(imageIdFromImg(document.getElementById('data'))).toBe('61bodyWashXL');
+    expect(imageIdFromImg(document.getElementById('set'))).toBe('81shoesGreenL');
+    expect(imageIdFromImg(document.getElementById('plain'))).toBe('55plainItemL');
+    expect(imageIdFromImg(document.getElementById('none'))).toBeNull();
+    expect(imageIdFromImg(null)).toBeNull();
   });
 });
 

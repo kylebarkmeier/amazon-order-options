@@ -59,17 +59,30 @@ tests/fixtures/  sanitized copies of Amazon page structure
 `src/core` has no browser-API dependencies, which is what keeps the unit tests
 fast and the same code runnable as a userscript.
 
+Single sources of truth, so a change is made once:
+
+- `src/core/hosts.js`: the marketplace list. The host check, the manifest
+  match patterns and the userscript `@match` lines are all generated from it.
+- `src/core/selectors.js`: the excluded-container and product-link selectors
+  shared by the page scanner and the order-page parser.
+- `src/core/text.js`: title normalisation and label de-duplication.
+- `tests/fixtures/routes.js`: the URL-to-fixture map used by both the unit
+  fetch stub and the Playwright route handler.
+
 ## Adding support for a page
 
 1. Open the page in your browser, copy the structure of one item card into a
    new fixture under `tests/fixtures/pages/`, and replace every order number,
-   ASIN, image id, name and address with made-up values. ASINs are ten
-   characters.
-2. Teach `src/core/page-detector.js` to classify the URL.
-3. Check whether `findItemCards` in `src/core/cards.js` already finds the card.
-   Extend `CARD_SELECTOR` or `findTitle` if it does not.
-4. Add a unit test in `tests/unit/cards.test.js` and a route mapping plus a
-   spec in `tests/e2e/`.
+   ASIN, image id, line item id, name and address with made-up values. ASINs
+   are ten characters; line item ids are lowercase alphanumeric.
+2. Teach `src/core/page-detector.js` to classify the URL (paths are compared
+   after any `/-/<lang>/` prefix is removed).
+3. Check whether `findItemCards` in `src/core/cards.js` already finds the card:
+   it looks for the smallest ancestor of a product image that holds a title
+   and no second product image. Extend `CARD_SELECTOR` or `findTitle` only if
+   that fails.
+4. Add a unit test in `tests/unit/cards.test.js`, a rule in
+   `tests/fixtures/routes.js`, and a spec in `tests/e2e/`.
 
 ## Pull requests
 

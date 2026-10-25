@@ -8,6 +8,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,8 +19,11 @@ if (!existsSync(path.join(dir, 'manifest.json'))) {
   process.exit(2);
 }
 
-const bin = path.join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'addons-linter.cmd' : 'addons-linter');
-const result = spawnSync(bin, [dir, '--output', 'json'], { encoding: 'utf8', shell: process.platform === 'win32' });
+// Run the linter's JavaScript entry point with this Node directly: no shell,
+// so paths with spaces are passed through untouched on every platform.
+const require = createRequire(import.meta.url);
+const linterBin = path.join(path.dirname(require.resolve('addons-linter/package.json')), 'bin', 'addons-linter');
+const result = spawnSync(process.execPath, [linterBin, dir, '--output', 'json'], { encoding: 'utf8' });
 if (result.error) {
   console.error(result.error.message);
   process.exit(2);

@@ -28,10 +28,13 @@ api() {
 }
 
 step() { printf '\n== %s\n' "$*"; }
+SKIPPED=()
 try() {
-  # Some settings only exist on public repositories or paid plans. Report and continue.
+  # Some settings only exist on public repositories or paid plans. Report,
+  # remember, and continue. Required steps run outside `try` and abort on error.
   if ! "$@" >/dev/null; then
-    printf '   (skipped: not available for this repository or plan)\n'
+    printf '   (not applied: GitHub refused it, see the message above)\n'
+    SKIPPED+=("$*")
   fi
 }
 
@@ -187,22 +190,38 @@ EOF
 )
 
 upsert_ruleset() {
+  # Returns non-zero when the API refuses the ruleset, so the caller can report it.
   local name="$1" body="$2"
   local id
   id=$(api GET /rulesets --jq ".[] | select(.name == \"$name\") | .id" 2>/dev/null || true)
   if [ -n "$id" ]; then
-    printf '%s' "$body" | api PUT "/rulesets/$id" --input - >/dev/null
-    printf '   updated ruleset "%s" (#%s)\n' "$name" "$id"
-  else
-    printf '%s' "$body" | api POST /rulesets --input - >/dev/null
-    printf '   created ruleset "%s"\n' "$name"
+    if printf '%s' "$body" | api PUT "/rulesets/$id" --input - >/dev/null; then
+      printf '   updated ruleset "%s" (#%s)\n' "$name" "$id"
+      return 0
+    fi
+    return 1
   fi
+  if printf '%s' "$body" | api POST /rulesets --input - >/dev/null; then
+    printf '   created ruleset "%s"\n' "$name"
+    return 0
+  fi
+  return 1
 }
-try upsert_ruleset "main" "$MAIN_RULESET"
+if ! upsert_ruleset "main" "$MAIN_RULESET"; then
+  printf '   ERROR: the main branch ruleset was not applied. main is unprotected.\n' >&2
+  RULESET_FAILED=1
+fi
 step "ruleset for release tags: admins only, no rewrites or deletion"
-try upsert_ruleset "release tags" "$TAG_RULESET"
+if ! upsert_ruleset "release tags" "$TAG_RULESET"; then
+  printf '   ERROR: the release tag ruleset was not applied.\n' >&2
+  RULESET_FAILED=1
+fi
 
 step "done"
+if [ "${#SKIPPED[@]}" -gt 0 ]; then
+  printf 'Not applied (plan or repository type does not support them):\n'
+  for item in "${SKIPPED[@]}"; do printf '  - %s\n' "$item"; done
+fi
 cat <<EOF
 Settings applied to https://github.com/$REPO
 
@@ -212,3 +231,7 @@ Still needs a person (see docs/github-security.md):
   - WEB_EXT_API_KEY / WEB_EXT_API_SECRET secrets if Firefox builds should be signed
 $( [ "$REQUIRE_REVIEWS" = "1" ] && printf '  - note: one approving review is required. A single maintainer cannot approve their own PR;\n    use "Merge without waiting for requirements" (admin bypass, PR only) or rerun with REQUIRE_REVIEWS=0.\n' )
 EOF
+if [ "${RULESET_FAILED:-0}" = "1" ]; then
+  printf '\nOne or more rulesets failed to apply. Fix the error above and rerun.\n' >&2
+  exit 1
+fi

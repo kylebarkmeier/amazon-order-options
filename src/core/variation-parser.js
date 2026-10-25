@@ -247,9 +247,49 @@ export function parseVariationFromDom(root) {
     for (const el of root.querySelectorAll('[id^="inline-twister-expanded-dimension-text-"]')) {
       const key = el.id.replace(/^inline-twister-expanded-dimension-text-/, '');
       const value = el.textContent.trim();
-      if (value) pairs.push({ label: humanizeDimension(key), value });
+      if (!value) continue;
+      // Amazon prints the localized label next to the value; prefer it over the English table.
+      const titleEl = root.querySelector(`#inline-twister-dim-title-${cssEscape(key)}`);
+      const pageLabel = titleEl ? cleanLabel(titleEl.textContent.replace(value, '')) : '';
+      pairs.push({ label: pageLabel || humanizeDimension(key), value });
     }
   }
 
   return pairs;
+}
+
+/**
+ * Markers whose presence means the DOM fallback can find something. Lets the
+ * caller skip parsing a multi-megabyte page that has none of them.
+ */
+export const DOM_VARIATION_MARKERS = Object.freeze(['id="variation_', 'inline-twister-expanded-dimension-text-']);
+
+/**
+ * @param {string} html
+ * @returns {boolean}
+ */
+export function hasDomVariationMarkers(html) {
+  return typeof html === 'string' && DOM_VARIATION_MARKERS.some((marker) => html.includes(marker));
+}
+
+/**
+ * Markers that identify a real product page as opposed to a sign-in page,
+ * bot check or error page served with status 200.
+ *
+ * @param {string} html
+ * @param {string} [asin]
+ * @returns {boolean}
+ */
+export function looksLikeProductPage(html, asin) {
+  if (typeof html !== 'string') return false;
+  if (html.includes('"dimensionValuesDisplayData"') || html.includes('id="productTitle"') || html.includes('id="dp"')) return true;
+  return Boolean(asin) && html.includes(`data-asin="${asin}"`);
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function cssEscape(value) {
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }

@@ -1,10 +1,18 @@
+import { BADGE_CLASS } from './selectors.js';
+
 /**
  * Builds the badge that is inserted under an item title.
  */
 
-export const BADGE_CLASS = 'aoo-badge';
+export { BADGE_CLASS };
 export const STYLE_ID = 'aoo-styles';
+export const THEME_ATTR = 'data-aoo-theme';
 
+/**
+ * Amazon's pages stay light whatever the operating system prefers, so the
+ * dark palette is keyed on the page's own background (see applyTheme), not on
+ * prefers-color-scheme.
+ */
 export const CSS = `
 .${BADGE_CLASS} {
   display: flex;
@@ -15,6 +23,7 @@ export const CSS = `
   line-height: 1.35;
   font-family: inherit;
   color: #0f1111;
+  text-decoration: none;
 }
 .${BADGE_CLASS}[data-aoo-style="plain"] { gap: 2px 10px; }
 .${BADGE_CLASS} .aoo-pair {
@@ -43,13 +52,11 @@ export const CSS = `
   align-self: center;
 }
 .${BADGE_CLASS}[data-aoo-source="title"] .aoo-pair { background: #eef3fb; border-color: #9fb9e2; }
-@media (prefers-color-scheme: dark) {
-  .${BADGE_CLASS} { color: #e3e6e6; }
-  .${BADGE_CLASS} .aoo-pair { background: #4a3b00; border-color: #c59a00; }
-  .${BADGE_CLASS}[data-aoo-source="title"] .aoo-pair { background: #1d2b44; border-color: #4a6fa8; }
-  .${BADGE_CLASS} .aoo-label { color: #c7cbcb; }
-  .${BADGE_CLASS} .aoo-source { color: #a7abab; }
-}
+html[${THEME_ATTR}="dark"] .${BADGE_CLASS} { color: #e3e6e6; }
+html[${THEME_ATTR}="dark"] .${BADGE_CLASS} .aoo-pair { background: #4a3b00; border-color: #c59a00; }
+html[${THEME_ATTR}="dark"] .${BADGE_CLASS}[data-aoo-source="title"] .aoo-pair { background: #1d2b44; border-color: #4a6fa8; }
+html[${THEME_ATTR}="dark"] .${BADGE_CLASS} .aoo-label { color: #c7cbcb; }
+html[${THEME_ATTR}="dark"] .${BADGE_CLASS} .aoo-source { color: #a7abab; }
 @media (max-width: 480px) {
   .${BADGE_CLASS} { font-size: 12px; }
   .${BADGE_CLASS} .aoo-pair { white-space: normal; }
@@ -71,6 +78,46 @@ export function ensureStyles(doc) {
   style.id = STYLE_ID;
   style.textContent = CSS;
   (doc.head || doc.documentElement).appendChild(style);
+}
+
+/**
+ * Marks the document dark when the page body has a dark background, so the
+ * badge colours follow the page rather than the operating system.
+ *
+ * @param {Document} doc
+ * @param {Window} win
+ * @returns {'dark'|'light'}
+ */
+export function applyTheme(doc, win) {
+  const theme = isDarkBackground(doc, win) ? 'dark' : 'light';
+  doc.documentElement.setAttribute(THEME_ATTR, theme);
+  return theme;
+}
+
+/**
+ * @param {Document} doc
+ * @param {Window} win
+ * @returns {boolean}
+ */
+export function isDarkBackground(doc, win) {
+  if (!doc.body || !win || typeof win.getComputedStyle !== 'function') return false;
+  for (const el of [doc.body, doc.documentElement]) {
+    const color = parseColor(win.getComputedStyle(el).backgroundColor);
+    if (!color || color.alpha === 0) continue;
+    const luminance = (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255;
+    return luminance < 0.4;
+  }
+  return false;
+}
+
+/**
+ * @param {string} value e.g. "rgb(255, 255, 255)" or "rgba(0, 0, 0, 0)"
+ * @returns {{r: number, g: number, b: number, alpha: number}|null}
+ */
+export function parseColor(value) {
+  const match = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(String(value || ''));
+  if (!match) return null;
+  return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]), alpha: match[4] === undefined ? 1 : Number(match[4]) };
 }
 
 /**
@@ -119,16 +166,22 @@ export function createBadge(doc, options, opts = {}) {
 }
 
 /**
- * Inserts the badge directly after the anchor element, replacing any badge
- * already there.
+ * Places the badge directly after the anchor element, or inside it when the
+ * anchor is a table cell (a sibling of a cell would become a new column).
+ * Any badge already there is replaced.
  *
  * @param {Element} anchorPoint
  * @param {HTMLElement} badge
  */
 export function placeBadge(anchorPoint, badge) {
-  const existing = anchorPoint.parentElement
-    ? anchorPoint.parentElement.querySelector(`:scope > .${BADGE_CLASS}`)
-    : null;
+  if (/^(TD|TH)$/.test(anchorPoint.tagName)) {
+    const existing = anchorPoint.querySelector(`:scope > .${BADGE_CLASS}`);
+    if (existing) existing.remove();
+    anchorPoint.appendChild(badge);
+    return;
+  }
+  const parent = anchorPoint.parentElement;
+  const existing = parent ? parent.querySelector(`:scope > .${BADGE_CLASS}`) : null;
   if (existing) existing.remove();
   anchorPoint.insertAdjacentElement('afterend', badge);
 }

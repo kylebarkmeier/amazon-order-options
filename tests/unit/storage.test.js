@@ -1,47 +1,39 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createPlatformStore, localStorageStore } from '../../src/platform/storage.js';
 
-function fakeChromeStorage({ promise = false, failWith = null } = {}) {
+function fakeStorage({ promise = false, failOn = [] } = {}) {
   const data = {};
   const lastError = { value: null };
+  const wrap = (method, fn) => (arg, cb) => {
+    lastError.value = failOn.includes(method) ? `${method} failed` : null;
+    if (promise) return lastError.value ? Promise.reject(new Error(lastError.value)) : Promise.resolve(fn(arg));
+    cb(fn(arg));
+    return undefined;
+  };
   const impl = {
-    get(key, cb) {
-      lastError.value = failWith;
-      const result = { [key]: data[key] };
-      if (!(key in data)) delete result[key];
-      if (promise) return failWith ? Promise.reject(new Error(failWith)) : Promise.resolve(result);
-      cb(result);
-      return undefined;
-    },
-    set(obj, cb) {
-      Object.assign(data, obj);
-      if (promise) return Promise.resolve();
-      cb();
-      return undefined;
-    },
-    remove(key, cb) {
-      delete data[key];
-      if (promise) return Promise.resolve();
-      cb();
-      return undefined;
+    get: wrap('get', (key) => (key in data ? { [key]: data[key] } : {})),
+    set: wrap('set', (obj) => Object.assign(data, obj)),
+    remove: wrap('remove', (key) => delete data[key]),
+  };
+  const runtime = {
+    get lastError() {
+      return lastError.value ? { message: lastError.value } : null;
     },
   };
-  return { data, lastError, api: { storage: { local: impl } } };
+  return { data, api: { storage: { local: impl }, runtime } };
 }
+
+afterEach(() => {
+  delete globalThis.browser;
+  delete globalThis.chrome;
+  delete globalThis.GM_getValue;
+  delete globalThis.GM_setValue;
+  delete globalThis.GM_deleteValue;
+});
 
 describe('createPlatformStore', () => {
   it('uses callback-style chrome storage', async () => {
-    const chrome = fakeChromeStorage();
-    const store = createPlatformStore({
-      chrome: {
-        ...chrome.api,
-        runtime: {
-          get lastError() {
-            return chrome.lastError.value ? { message: chrome.lastError.value } : null;
-          },
-        },
-      },
-    });
+    const store = createPlatformStore({ chrome: fakeStorage().api });
     expect(await store.get('k')).toBeNull();
     await store.set('k', 'v');
     expect(await store.get('k')).toBe('v');
@@ -49,27 +41,32 @@ describe('createPlatformStore', () => {
     expect(await store.get('k')).toBeNull();
   });
 
-  it('uses promise-style browser storage', async () => {
-    const fake = fakeChromeStorage({ promise: true });
-    const store = createPlatformStore({ browser: fake.api });
+  it('uses promise-style browser storage and prefers it over chrome when both exist', async () => {
+    const browser = fakeStorage({ promise: true });
+    const chrome = fakeStorage();
+    const store = createPlatformStore({ browser: browser.api, chrome: chrome.api });
     await store.set('k', 'v');
-    expect(await store.get('k')).toBe('v');
+    expect(browser.data.k).toBe('v');
+    expect(chrome.data.k).toBeUndefined();
     expect(await store.get('missing')).toBeNull();
   });
 
-  it('rejects on runtime.lastError and on thrown errors', async () => {
-    const chrome = fakeChromeStorage({ failWith: 'quota' });
-    const store = createPlatformStore({
-      chrome: {
-        ...chrome.api,
-        runtime: {
-          get lastError() {
-            return chrome.lastError.value ? { message: chrome.lastError.value } : null;
-          },
-        },
-      },
-    });
-    await expect(store.get('k')).rejects.toThrow('quota');
+  it('finds the extension API as a free identifier when the page window has none (Firefox content scripts)', async () => {
+    globalThis.browser = fakeStorage({ promise: true }).api;
+    const store = createPlatformStore({ localStorage: { getItem: () => 'wrong' } });
+    await store.set('k', 'v');
+    expect(await store.get('k')).toBe('v');
+    expect(globalThis.browser.storage.local.get.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it('rejects on runtime.lastError for set and remove as well as get, and on thrown errors', async () => {
+    const failing = createPlatformStore({ chrome: fakeStorage({ failOn: ['get', 'set', 'remove'] }).api });
+    await expect(failing.get('k')).rejects.toThrow('get failed');
+    await expect(failing.set('k', 'v')).rejects.toThrow('set failed');
+    await expect(failing.remove('k')).rejects.toThrow('remove failed');
+
+    const promiseFailing = createPlatformStore({ browser: fakeStorage({ promise: true, failOn: ['set'] }).api });
+    await expect(promiseFailing.set('k', 'v')).rejects.toThrow('set failed');
 
     const throwing = createPlatformStore({
       chrome: {
@@ -85,7 +82,7 @@ describe('createPlatformStore', () => {
     await expect(throwing.get('k')).rejects.toThrow('sync throw');
   });
 
-  it('uses GM storage when present', async () => {
+  it('uses GM storage when present on the global object', async () => {
     const values = {};
     const g = {
       GM_getValue: (k, d) => (k in values ? values[k] : d),
@@ -108,6 +105,20 @@ describe('createPlatformStore', () => {
     await noDelete.remove('k');
     expect(values.k).toBeNull();
     expect(await noDelete.get('k')).toBeNull();
+  });
+
+  it('uses GM storage exposed as scope bindings (userscript sandboxes)', async () => {
+    const values = {};
+    globalThis.GM_getValue = (k, d) => (k in values ? values[k] : d);
+    globalThis.GM_setValue = (k, v) => {
+      values[k] = v;
+    };
+    const store = createPlatformStore({});
+    await store.set('k', 'v');
+    expect(values.k).toBe('v');
+    expect(await store.get('k')).toBe('v');
+    await store.remove('k');
+    expect(values.k).toBeNull();
   });
 
   it('falls back to localStorage', async () => {
@@ -153,5 +164,6 @@ describe('localStorageStore', () => {
     expect(await quota.get('k')).toBe('v');
     await quota.remove('k');
     expect(await quota.get('k')).toBeNull();
+    expect(await localStorageStore(null).get('k')).toBeNull();
   });
 });

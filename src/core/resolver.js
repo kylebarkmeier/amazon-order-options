@@ -1,20 +1,28 @@
-import { parseTwisterData, variationForAsin, parseVariationFromDom } from './variation-parser.js';
+import {
+  parseTwisterData,
+  variationForAsin,
+  parseVariationFromDom,
+  hasDomVariationMarkers,
+  looksLikeProductPage,
+} from './variation-parser.js';
 import { parseOrderItems, matchOrderItem } from './order-page-parser.js';
 import { extractOptionsFromTitle } from './title-heuristics.js';
-import { orderDetailsUrl, productUrl } from './page-detector.js';
+import { asinFromHref, marketplaceOf, orderDetailsUrl, productUrl } from './page-detector.js';
 import { DAY_MS } from './cache.js';
+import { dedupeByLabel } from './text.js';
 
 /**
  * Decides where an item's selected options come from and fetches whatever is
- * missing, in this order:
+ * missing:
  *
- *  1. hints already on the page (visible or hidden "Size: M" rows)
- *  2. the product page for the item's child ASIN (twister data)
- *  3. the order details page, to find the ASIN via the image id, then (2)
- *  4. the product title
+ *  1. the order details page, to find the item's ASIN when the page does not
+ *     link it (return pages), matched by Amazon's line item id
+ *  2. the product page for the ASIN (twister data), merged with any
+ *     "Size: M" hints already on the page
+ *  3. the product title, only when nothing authoritative could be reached
  *
- * All network access goes through the injected `fetchText`, and all results
- * are cached, so a page with many items only fetches each page once.
+ * All network access goes through the injected `fetchText`, at most a few
+ * requests at a time, and results are cached per marketplace.
  */
 
 export const SOURCES = Object.freeze({
@@ -23,22 +31,39 @@ export const SOURCES = Object.freeze({
   TITLE: 'title',
 });
 
+export const PRODUCT_TTL = 7 * DAY_MS;
+export const ORDER_TTL = DAY_MS;
+/** A product page that did not answer for this ASIN is retried after a day. */
+export const NEGATIVE_TTL = DAY_MS;
+
 /**
  * @typedef {import('./variation-parser.js').OptionPair} OptionPair
- * @typedef {{ options: OptionPair[], source: string, asin?: string|null, title?: string|null }} Resolution
+ * @typedef {{ options: OptionPair[], confirmed: boolean }} ProductResult
+ * @typedef {{ options: OptionPair[], source: string, asin: string|null, title: string|null, retryable: boolean }} Resolution
+ * @typedef {{ text: string, url: string }} FetchedPage
  */
 
 /**
  * @param {Object} deps
- * @param {(url: string) => Promise<string>} deps.fetchText
+ * @param {(url: string, init?: {credentials?: 'omit'|'include'}) => Promise<string|FetchedPage>} deps.fetchText
  * @param {{get: (k: string) => Promise<any>, set: (k: string, v: any, ttl: number) => Promise<void>}} deps.cache
  * @param {(html: string) => Document|null} [deps.parseHtml]
  * @param {{fetchProductPages?: boolean, fetchOrderPages?: boolean, useTitleHeuristics?: boolean}} [deps.settings]
  * @param {number} [deps.maxFetchesPerPage]
+ * @param {number} [deps.maxConcurrent]
  */
-export function createResolver({ fetchText, cache, parseHtml = defaultParseHtml, settings = {}, maxFetchesPerPage = 40 }) {
+export function createResolver({
+  fetchText,
+  cache,
+  parseHtml = defaultParseHtml,
+  settings = {},
+  maxFetchesPerPage = 40,
+  maxConcurrent = 3,
+}) {
   const inflight = new Map();
   let fetchCount = 0;
+  let active = 0;
+  const waiting = [];
 
   const config = {
     fetchProductPages: settings.fetchProductPages !== false,
@@ -46,64 +71,117 @@ export function createResolver({ fetchText, cache, parseHtml = defaultParseHtml,
     useTitleHeuristics: settings.useTitleHeuristics !== false,
   };
 
+  function acquire() {
+    return new Promise((resolve) => {
+      if (active < maxConcurrent) {
+        active += 1;
+        resolve();
+      } else {
+        waiting.push(resolve);
+      }
+    });
+  }
+
+  function release() {
+    const next = waiting.shift();
+    if (next) next();
+    else active -= 1;
+  }
+
   /**
-   * Deduplicates concurrent requests for the same URL and enforces a per-page cap.
+   * Fetches a page at most once per URL and credential mode, a few at a time,
+   * within the per-page cap. Failures resolve to null and are never cached.
+   *
    * @param {string} url
-   * @returns {Promise<string|null>}
+   * @param {{credentials: 'omit'|'include'}} init
+   * @returns {Promise<FetchedPage|null>}
    */
-  function fetchOnce(url) {
-    if (inflight.has(url)) return inflight.get(url);
+  function fetchOnce(url, init) {
+    const key = `${init.credentials}:${url}`;
+    if (inflight.has(key)) return inflight.get(key);
     if (fetchCount >= maxFetchesPerPage) return Promise.resolve(null);
     fetchCount += 1;
-    const promise = fetchText(url)
-      .catch(() => null)
-      .finally(() => inflight.delete(url));
-    inflight.set(url, promise);
+    const promise = (async () => {
+      await acquire();
+      try {
+        const result = await fetchText(url, init);
+        if (typeof result === 'string') return { text: result, url };
+        if (result && typeof result.text === 'string') return { text: result.text, url: result.url || url };
+        return null;
+      } catch {
+        return null;
+      } finally {
+        release();
+      }
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, promise);
     return promise;
   }
 
   /**
    * @param {string} origin
    * @param {string} asin
-   * @returns {Promise<OptionPair[]|null>}
+   * @returns {Promise<ProductResult|null>} null when nothing could be learned (not cached)
    */
   async function resolveByAsin(origin, asin) {
     if (!asin) return null;
-    const key = `asin:${asin}`;
+    const key = `asin:${marketplaceOf(origin)}:${asin}`;
     const cached = await cache.get(key);
-    if (cached !== null && cached !== undefined) return cached.length ? cached : null;
+    if (Array.isArray(cached)) return { options: cached, confirmed: true };
+    if (cached && Array.isArray(cached.options)) return { options: cached.options, confirmed: cached.confirmed !== false };
     if (!config.fetchProductPages) return null;
 
-    const html = await fetchOnce(productUrl(origin, asin));
-    if (!html) return null;
+    const url = productUrl(origin, asin);
+    // Product pages are public. An anonymous request keeps the lookup out of
+    // the account's browsing history; the signed-in request is the fallback.
+    let page = await fetchOnce(url, { credentials: 'omit' });
+    if (!page || !looksLikeProductPage(page.text, asin)) page = await fetchOnce(url, { credentials: 'include' });
+    if (!page || !looksLikeProductPage(page.text, asin)) return null;
 
-    let options = variationForAsin(parseTwisterData(html), asin);
-    if (!options || options.length === 0) {
-      const doc = parseHtml(html);
-      options = doc ? parseVariationFromDom(doc) : [];
+    const landedOn = asinFromHref(page.url);
+    const redirectedElsewhere = Boolean(landedOn && landedOn !== asin);
+    const twister = parseTwisterData(page.text);
+
+    let options = variationForAsin(twister, asin);
+    if (options && options.length) {
+      const result = { options, confirmed: true };
+      await cache.set(key, result, PRODUCT_TTL);
+      return result;
     }
-    const result = options && options.length ? options : [];
-    await cache.set(key, result, 7 * DAY_MS);
-    return result.length ? result : null;
+
+    // The DOM shows whichever variation the page has selected, which is only
+    // this ASIN when the page is really about it.
+    const pageIsThisAsin = !redirectedElsewhere && (!twister || !twister.currentAsin || twister.currentAsin === asin);
+    if (pageIsThisAsin && hasDomVariationMarkers(page.text)) {
+      const doc = parseHtml(page.text);
+      options = doc ? parseVariationFromDom(doc) : [];
+    } else {
+      options = [];
+    }
+
+    const confirmed = pageIsThisAsin;
+    const result = { options: options || [], confirmed };
+    await cache.set(key, result, confirmed ? PRODUCT_TTL : NEGATIVE_TTL);
+    return result;
   }
 
   /**
    * @param {string} origin
    * @param {string} orderId
-   * @returns {Promise<import('./order-page-parser.js').OrderItem[]>}
+   * @returns {Promise<import('./order-page-parser.js').OrderItem[]|null>} null when the page could not be fetched
    */
   async function resolveOrderItems(origin, orderId) {
     if (!orderId) return [];
-    const key = `order:${orderId}`;
+    const key = `order:${marketplaceOf(origin)}:${orderId}`;
     const cached = await cache.get(key);
     if (Array.isArray(cached) && cached.length) return cached;
     if (!config.fetchOrderPages) return [];
 
-    const html = await fetchOnce(orderDetailsUrl(origin, orderId));
-    if (!html) return [];
-    const doc = parseHtml(html);
+    const page = await fetchOnce(orderDetailsUrl(origin, orderId), { credentials: 'include' });
+    if (!page) return null;
+    const doc = parseHtml(page.text);
     const items = doc ? parseOrderItems(doc) : [];
-    if (items.length) await cache.set(key, items, DAY_MS);
+    if (items.length) await cache.set(key, items, ORDER_TTL);
     return items;
   }
 
@@ -114,39 +192,55 @@ export function createResolver({ fetchText, cache, parseHtml = defaultParseHtml,
    * @param {string|null} [card.imageId]
    * @param {string|null} [card.title]
    * @param {string|null} [card.orderId]
+   * @param {string|null} [card.lineItemId]
    * @param {OptionPair[]} [card.hints]
-   * @returns {Promise<Resolution|null>}
+   * @returns {Promise<Resolution>}
    */
   async function resolveCard(card) {
     const hints = Array.isArray(card.hints) ? card.hints : [];
     let asin = card.asin || null;
     let fullTitle = null;
+    let lookupFailed = false;
 
-    // The order page is only worth a request when the page itself says nothing.
-    if (!asin && hints.length === 0 && card.orderId && (card.imageId || card.title)) {
+    if (!asin && card.orderId && (card.lineItemId || card.imageId || card.title)) {
       const items = await resolveOrderItems(card.origin, card.orderId);
-      const match = matchOrderItem(items, { imageId: card.imageId, title: card.title });
-      if (match) {
-        asin = match.asin;
-        fullTitle = match.title;
+      if (items === null) {
+        lookupFailed = config.fetchOrderPages;
+      } else {
+        const match = matchOrderItem(items, { lineItemId: card.lineItemId, imageId: card.imageId, title: card.title });
+        if (match) {
+          asin = match.asin;
+          fullTitle = match.title;
+        }
       }
     }
 
     const product = asin ? await resolveByAsin(card.origin, asin) : null;
-    const merged = mergeOptions(hints, product);
+    const productUnknown = Boolean(asin && product === null && config.fetchProductPages);
+    const retryable = productUnknown || lookupFailed;
+
+    const merged = dedupeByLabel([...(product ? product.options : []), ...hints]);
     if (merged.length) {
-      return { options: merged, source: product ? SOURCES.PRODUCT : SOURCES.PAGE, asin, title: fullTitle };
+      return { options: merged, source: product && product.options.length ? SOURCES.PRODUCT : SOURCES.PAGE, asin, title: fullTitle, retryable };
     }
 
-    if (config.useTitleHeuristics) {
+    const confirmedNone = Boolean(product && product.confirmed);
+    if (config.useTitleHeuristics && !confirmedNone) {
       const fromTitle = extractOptionsFromTitle(fullTitle || card.title);
-      if (fromTitle.length) return { options: fromTitle, source: SOURCES.TITLE, asin, title: fullTitle };
+      if (fromTitle.length) return { options: fromTitle, source: SOURCES.TITLE, asin, title: fullTitle, retryable };
     }
 
-    return fullTitle ? { options: [], source: SOURCES.PAGE, asin, title: fullTitle } : null;
+    return { options: [], source: SOURCES.PAGE, asin, title: fullTitle, retryable };
   }
 
-  return { resolveCard, resolveByAsin, resolveOrderItems, get fetchCount() { return fetchCount; } };
+  return {
+    resolveCard,
+    resolveByAsin,
+    resolveOrderItems,
+    get fetchCount() {
+      return fetchCount;
+    },
+  };
 }
 
 /**
@@ -158,15 +252,7 @@ export function createResolver({ fetchText, cache, parseHtml = defaultParseHtml,
  * @returns {OptionPair[]}
  */
 export function mergeOptions(hints, product) {
-  const out = [];
-  const seen = new Set();
-  for (const pair of [...(product || []), ...hints]) {
-    const key = pair.label.toLowerCase().replace(/colour/, 'color');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(pair);
-  }
-  return out;
+  return dedupeByLabel([...(product || []), ...(hints || [])]);
 }
 
 /**

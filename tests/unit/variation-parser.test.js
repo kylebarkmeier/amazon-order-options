@@ -6,6 +6,8 @@ import {
   parseVariationFromDom,
   humanizeDimension,
   cleanLabel,
+  hasDomVariationMarkers,
+  looksLikeProductPage,
 } from '../../src/core/variation-parser.js';
 import { fixtureHtml, fixtureDom } from './helpers.js';
 
@@ -120,12 +122,19 @@ describe('parseVariationFromDom', () => {
     ]);
   });
 
-  it('reads inline twister text when classic widgets are absent', () => {
+  it('reads inline twister text, using the label printed on the page when there is one', () => {
     const doc = fixtureDom('product-B0SHOESGR9').window.document;
     expect(parseVariationFromDom(doc)).toEqual([
       { label: 'Size', value: '9 Women/8.5 Men' },
       { label: 'Color', value: 'Green' },
     ]);
+  });
+
+  it('keeps a localized inline label', () => {
+    document.body.innerHTML = `
+      <span id="inline-twister-dim-title-size_name">Größe: 42</span>
+      <span id="inline-twister-expanded-dimension-text-size_name">42</span>`;
+    expect(parseVariationFromDom(document)).toEqual([{ label: 'Größe', value: '42' }]);
   });
 
   it('skips widgets without a selection and handles bad input', () => {
@@ -142,6 +151,24 @@ describe('parseVariationFromDom', () => {
   it('ignores empty inline twister values', () => {
     document.body.innerHTML = '<span id="inline-twister-expanded-dimension-text-size_name">   </span>';
     expect(parseVariationFromDom(document)).toEqual([]);
+  });
+});
+
+describe('page markers', () => {
+  it('knows when the DOM fallback could find something', () => {
+    expect(hasDomVariationMarkers(fixtureHtml('product-B0SHOESGR9'))).toBe(true);
+    expect(hasDomVariationMarkers(fixtureHtml('product-B0ROMPRMED'))).toBe(true);
+    expect(hasDomVariationMarkers(fixtureHtml('product-B0NOTWISTR'))).toBe(false);
+    expect(hasDomVariationMarkers(null)).toBe(false);
+  });
+
+  it('tells product pages from interstitials', () => {
+    expect(looksLikeProductPage(fixtureHtml('product-B0NOTWISTR'))).toBe(true);
+    expect(looksLikeProductPage(fixtureHtml('product-B0ROMPRMED'))).toBe(true);
+    expect(looksLikeProductPage('<html><body><form>Type the characters you see</form></body></html>')).toBe(false);
+    expect(looksLikeProductPage('<div data-asin="B0ROMPRMED"></div>', 'B0ROMPRMED')).toBe(true);
+    expect(looksLikeProductPage('<div data-asin="B0ROMPRMED"></div>', 'B0OTHER000')).toBe(false);
+    expect(looksLikeProductPage(null)).toBe(false);
   });
 });
 
