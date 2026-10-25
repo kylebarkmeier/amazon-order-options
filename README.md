@@ -51,6 +51,8 @@ userscript below.
 
 ### Firefox (desktop and Android)
 
+Firefox 140 or newer on desktop, 142 or newer on Android.
+
 Releases include a signed `amazon-order-options-firefox-<version>.xpi` when
 AMO signing is configured for the repository (see CONTRIBUTING.md), otherwise
 a source zip.
@@ -118,11 +120,13 @@ Click the toolbar icon, or open the extension's options page:
 Settings are stored in extension storage (Tampermonkey storage for the
 userscript) and apply after reloading the Amazon tab.
 
-## Privacy
+## Privacy and security
 
 No data leaves your browser. There is no telemetry, no external server and no
 third-party request. See [SECURITY.md](SECURITY.md) for exactly what is
-stored.
+stored and how to verify a release's checksum and provenance attestation, and
+[docs/github-security.md](docs/github-security.md) for how the repository
+and its releases are protected.
 
 ## Limitations
 

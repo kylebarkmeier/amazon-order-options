@@ -31,7 +31,7 @@ export function createCache({ store, now = () => Date.now(), prefix = 'aoo:' }) 
     const full = prefix + key;
     let entry = memory.get(full);
     if (!entry) {
-      let raw = null;
+      let raw;
       try {
         raw = await store.get(full);
       } catch {

@@ -19,10 +19,29 @@ Both kinds of fetch can be turned off on the options page.
 
 ## Reporting a vulnerability
 
-Open a private security advisory on GitHub
-(Security tab, "Report a vulnerability"), or email the maintainer address on the
-GitHub profile. Please include the browser, the page type, and steps to
-reproduce. Expect an acknowledgement within a week.
+Use GitHub's private vulnerability reporting: open the repository's Security
+tab and choose **Report a vulnerability**. Please include the browser, the
+page type, and steps to reproduce. Expect an acknowledgement within a week.
 
 Please do not open a public issue for security problems until a fix is
 available.
+
+## Verifying a release
+
+Every release asset ships with a `.sha256` file and a signed build provenance
+attestation produced by the release workflow:
+
+```bash
+sha256sum -c amazon-order-options-chrome-<version>.zip.sha256
+gh attestation verify amazon-order-options-chrome-<version>.zip --owner kylebarkmeier
+```
+
+If either check fails, do not install the file.
+
+## How the repository is protected
+
+See [docs/github-security.md](docs/github-security.md) for the full list:
+SHA-pinned actions with least-privilege tokens, CodeQL, dependency review,
+Scorecard, Dependabot, install scripts disabled, a release environment that
+waits for a human, and branch rulesets that require signed commits, pull
+requests and green checks.
