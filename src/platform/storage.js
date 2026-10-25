@@ -1,46 +1,64 @@
 /**
  * Picks a key/value store for the current runtime:
  *   - WebExtension storage (Firefox `browser.storage`, Chrome `chrome.storage`)
- *   - Tampermonkey / Greasemonkey `GM_*` storage
+ *   - Tampermonkey / Violentmonkey `GM_*` storage
  *   - `localStorage` as the last resort
  *
+ * The APIs are looked up on the given global object and, failing that, as
+ * free identifiers in the script's own scope: Firefox content scripts expose
+ * `browser` on the sandbox global rather than on the page window, and
+ * userscript managers expose `GM_*` as scope bindings.
+ *
+ * @param {object} [globalObject]
  * @returns {import('../core/cache.js').KeyValueStore}
  */
 export function createPlatformStore(globalObject = globalThis) {
   const ext = extensionStorage(globalObject);
   if (ext) return ext;
 
-  if (typeof globalObject.GM_getValue === 'function' && typeof globalObject.GM_setValue === 'function') {
-    return {
-      async get(key) {
-        const value = globalObject.GM_getValue(key, null);
-        return value === undefined ? null : value;
-      },
-      async set(key, value) {
-        globalObject.GM_setValue(key, value);
-      },
-      async remove(key) {
-        if (typeof globalObject.GM_deleteValue === 'function') globalObject.GM_deleteValue(key);
-        else globalObject.GM_setValue(key, null);
-      },
-    };
-  }
+  const gm = userscriptStorage(globalObject);
+  if (gm) return gm;
 
   return localStorageStore(globalObject);
 }
 
 /**
- * @param {typeof globalThis} globalObject
+ * @param {object} globalObject
+ * @returns {{api: object, runtime: object|null}|null}
+ */
+function findExtensionApi(globalObject) {
+  const candidates = [globalObject && globalObject.browser, globalObject && globalObject.chrome];
+  try {
+    if (typeof browser !== 'undefined') candidates.push(browser);
+  } catch {
+    // not defined in this scope
+  }
+  try {
+    if (typeof chrome !== 'undefined') candidates.push(chrome);
+  } catch {
+    // not defined in this scope
+  }
+  for (const candidate of candidates) {
+    if (candidate && candidate.storage && candidate.storage.local) {
+      return { api: candidate.storage.local, runtime: candidate.runtime || null };
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {object} globalObject
  * @returns {import('../core/cache.js').KeyValueStore|null}
  */
 function extensionStorage(globalObject) {
-  const api = globalObject.browser?.storage?.local || globalObject.chrome?.storage?.local;
-  if (!api) return null;
+  const found = findExtensionApi(globalObject);
+  if (!found) return null;
+  const { api, runtime } = found;
   const call = (method, arg) =>
     new Promise((resolve, reject) => {
       try {
         const maybe = api[method](arg, (result) => {
-          const err = globalObject.chrome?.runtime?.lastError;
+          const err = runtime && runtime.lastError;
           if (err) reject(new Error(err.message));
           else resolve(result);
         });
@@ -64,14 +82,54 @@ function extensionStorage(globalObject) {
 }
 
 /**
- * @param {typeof globalThis} globalObject
+ * @param {object} globalObject
+ * @returns {{get: Function, set: Function, remove: Function|null}|null}
+ */
+function findGmApi(globalObject) {
+  if (globalObject && typeof globalObject.GM_getValue === 'function' && typeof globalObject.GM_setValue === 'function') {
+    return { get: globalObject.GM_getValue, set: globalObject.GM_setValue, remove: globalObject.GM_deleteValue || null };
+  }
+  try {
+    if (typeof GM_getValue === 'function' && typeof GM_setValue === 'function') {
+      return { get: GM_getValue, set: GM_setValue, remove: typeof GM_deleteValue === 'function' ? GM_deleteValue : null };
+    }
+  } catch {
+    // not defined in this scope
+  }
+  return null;
+}
+
+/**
+ * @param {object} globalObject
+ * @returns {import('../core/cache.js').KeyValueStore|null}
+ */
+function userscriptStorage(globalObject) {
+  const gm = findGmApi(globalObject);
+  if (!gm) return null;
+  return {
+    async get(key) {
+      const value = gm.get(key, null);
+      return value === undefined ? null : value;
+    },
+    async set(key, value) {
+      gm.set(key, value);
+    },
+    async remove(key) {
+      if (gm.remove) gm.remove(key);
+      else gm.set(key, null);
+    },
+  };
+}
+
+/**
+ * @param {object} globalObject
  * @returns {import('../core/cache.js').KeyValueStore}
  */
 export function localStorageStore(globalObject = globalThis) {
   const memory = new Map();
   const ls = () => {
     try {
-      return globalObject.localStorage || null;
+      return (globalObject && globalObject.localStorage) || null;
     } catch {
       return null;
     }

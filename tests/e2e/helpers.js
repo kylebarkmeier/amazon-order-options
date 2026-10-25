@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fixtureNameForPath } from '../fixtures/routes.js';
 
 export const AMAZON = 'https://www.amazon.com';
 export const FIXTURES = path.resolve('tests/fixtures/pages');
@@ -13,22 +14,11 @@ const PNG_1X1 = Buffer.from(
 );
 
 /**
- * Maps an Amazon path to a fixture file, mirroring tests/unit/helpers.js.
- *
  * @param {string} pathname
- * @returns {string|null}
+ * @returns {string|null} fixture file path
  */
 export function fixtureForPath(pathname) {
-  let name = null;
-  if (pathname === '/spr/returns/cart') name = 'returns-cart';
-  else if (pathname.startsWith('/spr/returns/prep')) name = 'returns-prep';
-  else if (pathname.endsWith('/order-details')) name = 'order-details';
-  else if (pathname.endsWith('/order-history') || pathname === '/your-orders/orders') name = 'orders-list';
-  else if (pathname === '/your-returns') name = 'your-returns';
-  else {
-    const product = /^\/dp\/([A-Z0-9]{10})/.exec(pathname);
-    if (product) name = `product-${product[1]}`;
-  }
+  const name = fixtureNameForPath(pathname);
   if (!name) return null;
   const file = path.join(FIXTURES, `${name}.html`);
   return existsSync(file) ? file : null;

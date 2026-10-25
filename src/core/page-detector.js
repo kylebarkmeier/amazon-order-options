@@ -1,3 +1,5 @@
+import { AMAZON_TLDS } from './hosts.js';
+
 /**
  * Classifies Amazon URLs into the page types the extension cares about and
  * pulls out identifiers from the query string.
@@ -13,9 +15,11 @@ export const PAGE_TYPES = Object.freeze({
   UNKNOWN: 'unknown',
 });
 
-/** Amazon retail hostnames the extension runs on. */
-export const AMAZON_HOST_PATTERN =
-  /(^|\.)amazon\.(com|co\.uk|de|ca|fr|it|es|co\.jp|com\.au|in|com\.mx|com\.br|nl|se|pl|sg|ae|sa|com\.tr|eg|com\.be|ie)$/i;
+/** Amazon retail hostnames the extension runs on, built from the shared marketplace list. */
+export const AMAZON_HOST_PATTERN = new RegExp(`(^|\\.)amazon\\.(${AMAZON_TLDS.map((t) => t.replace(/\./g, '\\.')).join('|')})$`, 'i');
+
+/** Amazon prefixes paths with a language segment such as /-/en/ or /-/es/ when the UI language differs from the site default. */
+const LANGUAGE_PREFIX = /^\/-\/[a-z]{2,3}(?:[-_][A-Za-z]{2,4})?(?=\/|$)/;
 
 /**
  * @param {string} hostname
@@ -38,6 +42,19 @@ function safeUrl(url) {
 }
 
 /**
+ * The path with any language prefix and trailing slash removed, lower-cased.
+ *
+ * @param {string} pathname
+ * @returns {string}
+ */
+export function canonicalPath(pathname) {
+  return String(pathname || '')
+    .replace(LANGUAGE_PREFIX, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+/**
  * @param {string} url
  * @returns {string} one of PAGE_TYPES
  */
@@ -45,15 +62,11 @@ export function detectPageType(url) {
   const parsed = safeUrl(url);
   if (!parsed || !isAmazonHost(parsed.hostname)) return PAGE_TYPES.UNKNOWN;
 
-  const path = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+  const path = canonicalPath(parsed.pathname);
 
-  if (/^\/your-returns$/.test(path) || /\/css\/returns\/(history|list)/.test(path)) {
-    return PAGE_TYPES.YOUR_RETURNS;
-  }
-  if (/^\/spr\/returns\/cart$/.test(path)) return PAGE_TYPES.RETURNS_CART;
-  if (/^\/spr\/returns\/(prep|confirmation|summary|label|status)/.test(path)) {
-    return PAGE_TYPES.RETURNS_PREP;
-  }
+  if (path === '/your-returns' || /\/css\/returns\/(history|list)/.test(path)) return PAGE_TYPES.YOUR_RETURNS;
+  if (path === '/spr/returns/cart') return PAGE_TYPES.RETURNS_CART;
+  if (/^\/spr\/returns\/(prep|confirmation|summary|label|status)/.test(path)) return PAGE_TYPES.RETURNS_PREP;
   if (/^\/spr\/returns/.test(path) || /\/css\/returns\//.test(path) || /^\/returns\b/.test(path)) {
     return PAGE_TYPES.RETURNS_OTHER;
   }
@@ -62,10 +75,9 @@ export function detectPageType(url) {
   }
   if (
     /order-history$/.test(path) ||
-    /^\/your-orders\/orders$/.test(path) ||
-    /^\/your-orders$/.test(path) ||
-    /\/your-account\/order-history/.test(path) ||
-    /^\/gp\/your-account\/order-history/.test(path)
+    path === '/your-orders/orders' ||
+    path === '/your-orders' ||
+    /\/your-account\/order-history/.test(path)
   ) {
     return PAGE_TYPES.ORDERS_LIST;
   }
@@ -90,11 +102,41 @@ export function getOrderIdFromUrl(url) {
 }
 
 /**
+ * Reads the order line item id (`itemId` / `lineItemId`) from the query string.
+ *
+ * @param {string} url
+ * @returns {string|null}
+ */
+export function getLineItemIdFromUrl(url) {
+  const parsed = safeUrl(url);
+  if (!parsed) return null;
+  for (const key of ['lineItemId', 'itemId', 'itemID']) {
+    const value = parsed.searchParams.get(key);
+    if (value && isLineItemId(value)) return value;
+  }
+  return null;
+}
+
+/**
  * @param {string} value
  * @returns {boolean}
  */
 export function isOrderId(value) {
-  return /^\d{3}-\d{7}-\d{7}$/.test(String(value || '').trim());
+  return ORDER_ID.test(String(value || '').trim());
+}
+
+/** Shape of an Amazon order id. */
+export const ORDER_ID = /^\d{3}-\d{7}-\d{7}$/;
+
+/** Order line item ids are opaque lowercase alphanumeric tokens. */
+const LINE_ITEM_ID = /^[a-z0-9]{8,40}$/;
+
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isLineItemId(value) {
+  return LINE_ITEM_ID.test(String(value || ''));
 }
 
 /**
@@ -119,7 +161,19 @@ export function productUrl(origin, asin) {
   return `${origin}/dp/${encodeURIComponent(asin)}`;
 }
 
-/** Matches a 10 character ASIN inside a product path. */
+/**
+ * The marketplace a page belongs to, used to keep cached data per site.
+ *
+ * @param {string} origin
+ * @returns {string} e.g. "amazon.de"
+ */
+export function marketplaceOf(origin) {
+  const parsed = safeUrl(origin);
+  const host = parsed ? parsed.hostname : String(origin || '');
+  return host.toLowerCase().replace(/^(www|smile|sellercentral)\./, '') || 'unknown';
+}
+
+/** Matches a 10 character ASIN inside a product path. Keep PRODUCT_LINK_SELECTOR in selectors.js in step. */
 const ASIN_IN_PATH = /\/(?:dp|gp\/product|gp\/aw\/d|dp\/product)\/([A-Z0-9]{10})(?:[/?#]|$)/i;
 
 /**

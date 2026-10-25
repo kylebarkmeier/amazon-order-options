@@ -17,6 +17,7 @@ describe('classifySegment', () => {
     ['12 Count', 'Pack'],
     ['Green', null],
     ['Women', null],
+    ['s', null],
     ['', null],
     [null, null],
   ])('%s -> %s', (segment, expected) => {
@@ -45,9 +46,11 @@ describe('extractOptionsFromTitle', () => {
     ]);
   });
 
-  it('reads explicit "Size X" phrases', () => {
+  it('reads explicit "Size X" phrases but not the word "Sizes"', () => {
     expect(extractOptionsFromTitle('Running Shoes for Men Size 10.5 Black')).toEqual([{ label: 'Size', value: '10.5' }]);
     expect(extractOptionsFromTitle('Hoodie Size: XL')).toEqual([{ label: 'Size', value: 'XL' }]);
+    expect(extractOptionsFromTitle('Kids Crew Socks, Sizes 6-12, 12 Pairs')).toEqual([]);
+    expect(extractOptionsFromTitle('Available in Multiple Sizes')).toEqual([]);
   });
 
   it('returns nothing for titles without sizes or empty input', () => {

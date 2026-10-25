@@ -4,16 +4,21 @@
 
 The content script runs only on Amazon retail domains listed in the manifest.
 It reads the order and return pages you open, and it may fetch two kinds of
-Amazon pages in the background using your existing session:
+Amazon pages in the background:
 
-- the product page for an item (`/dp/<ASIN>`), to read the selected variation
-- the order details page for an order id shown on a return page
+- the product page for an item (`/dp/<ASIN>`), to read the selected variation.
+  This request is made without your session cookies first, so it does not
+  count as you viewing the product; only if Amazon answers with something
+  other than a product page is it repeated with your session.
+- the order details page for an order id shown on a return page, with your
+  session, since order pages require it.
 
-Both fetches are same-origin requests to Amazon. Nothing is sent anywhere
-else. The only data stored is a cache of variation text keyed by ASIN, a cache
-of order item lists keyed by order id (one day), and your settings. Everything
-is kept in the browser's extension storage (or Tampermonkey storage for the
-userscript) and never leaves the device.
+Both are same-origin requests to the Amazon domain you are on, at most a few
+at a time. Nothing is sent anywhere else. The only data stored is a cache of
+variation text keyed by marketplace and ASIN (seven days), a cache of order
+item lists keyed by marketplace and order id (one day), and your settings.
+Everything is kept in the browser's extension storage, or the userscript
+manager's storage, and never leaves the device.
 
 Both kinds of fetch can be turned off on the options page.
 

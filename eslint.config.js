@@ -17,7 +17,6 @@ export default [
         GM_getValue: 'readonly',
         GM_setValue: 'readonly',
         GM_deleteValue: 'readonly',
-        __USERSCRIPT__: 'readonly',
       },
     },
     rules: {

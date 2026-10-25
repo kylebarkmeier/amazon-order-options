@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { fixtureNameForPath } from '../fixtures/routes.js';
 
-const fixturesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/pages');
+const fixturesDir = path.resolve('tests/fixtures/pages');
 
 /**
  * @param {string} name fixture file name without extension
@@ -29,37 +29,33 @@ export function fixtureDom(name, url = 'https://www.amazon.com/') {
  * @returns {string|null}
  */
 export function fixtureForUrl(url) {
-  const { pathname } = new URL(url);
-  if (pathname === '/spr/returns/cart') return fixtureHtml('returns-cart');
-  if (pathname.startsWith('/spr/returns/prep')) return fixtureHtml('returns-prep');
-  if (pathname.endsWith('/order-details')) return fixtureHtml('order-details');
-  if (pathname.endsWith('/order-history') || pathname === '/your-orders/orders') return fixtureHtml('orders-list');
-  if (pathname === '/your-returns') return fixtureHtml('your-returns');
-  const product = /^\/dp\/([A-Z0-9]{10})/.exec(pathname);
-  if (product) {
-    try {
-      return fixtureHtml(`product-${product[1]}`);
-    } catch {
-      return null;
-    }
+  const name = fixtureNameForPath(new URL(url).pathname);
+  if (!name) return null;
+  try {
+    return fixtureHtml(name);
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /**
- * fetchText implementation backed by the fixtures, recording every URL.
+ * fetchText implementation backed by the fixtures, recording every URL and
+ * credential mode. Missing pages reject like a 404 would.
  *
- * @returns {{fetchText: (url: string) => Promise<string>, calls: string[]}}
+ * @returns {{fetchText: (url: string, init?: object) => Promise<{text: string, url: string}>, calls: string[], modes: string[]}}
  */
 export function fixtureFetch() {
   const calls = [];
+  const modes = [];
   return {
     calls,
-    async fetchText(url) {
+    modes,
+    async fetchText(url, init = {}) {
       calls.push(url);
+      modes.push(init.credentials || 'include');
       const html = fixtureForUrl(url);
       if (html === null) throw new Error(`404 ${url}`);
-      return html;
+      return { text: html, url };
     },
   };
 }

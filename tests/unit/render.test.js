@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { createBadge, ensureStyles, formatOptions, placeBadge, BADGE_CLASS, STYLE_ID } from '../../src/core/render.js';
+import {
+  applyTheme,
+  createBadge,
+  ensureStyles,
+  formatOptions,
+  isDarkBackground,
+  parseColor,
+  placeBadge,
+  BADGE_CLASS,
+  STYLE_ID,
+  THEME_ATTR,
+} from '../../src/core/render.js';
 
 const options = [
   { label: 'Size', value: 'M' },
@@ -15,12 +26,15 @@ describe('formatOptions', () => {
 });
 
 describe('ensureStyles', () => {
-  it('injects the stylesheet once', () => {
+  it('injects the stylesheet once and keys dark colours on the page, not the OS', () => {
     document.head.innerHTML = '';
     ensureStyles(document);
     ensureStyles(document);
     expect(document.querySelectorAll(`#${STYLE_ID}`)).toHaveLength(1);
-    expect(document.getElementById(STYLE_ID).textContent).toContain(`.${BADGE_CLASS}`);
+    const css = document.getElementById(STYLE_ID).textContent;
+    expect(css).toContain(`.${BADGE_CLASS}`);
+    expect(css).toContain(`html[${THEME_ATTR}="dark"]`);
+    expect(css).not.toContain('prefers-color-scheme');
   });
 
   it('falls back to the document element without a head', () => {
@@ -28,6 +42,29 @@ describe('ensureStyles', () => {
     doc.head.remove();
     ensureStyles(doc);
     expect(doc.getElementById(STYLE_ID)).not.toBeNull();
+  });
+});
+
+describe('theme detection', () => {
+  it('parses colours', () => {
+    expect(parseColor('rgb(255, 255, 255)')).toEqual({ r: 255, g: 255, b: 255, alpha: 1 });
+    expect(parseColor('rgba(0, 0, 0, 0)')).toEqual({ r: 0, g: 0, b: 0, alpha: 0 });
+    expect(parseColor('transparent')).toBeNull();
+    expect(parseColor(null)).toBeNull();
+  });
+
+  it('marks dark pages dark and light pages light', () => {
+    document.body.style.backgroundColor = 'rgb(255, 255, 255)';
+    expect(applyTheme(document, window)).toBe('light');
+    expect(document.documentElement.getAttribute(THEME_ATTR)).toBe('light');
+    document.body.style.backgroundColor = 'rgb(20, 20, 20)';
+    expect(applyTheme(document, window)).toBe('dark');
+    document.body.style.backgroundColor = '';
+    document.documentElement.style.backgroundColor = 'rgb(10, 10, 10)';
+    expect(isDarkBackground(document, window)).toBe(true);
+    document.documentElement.style.backgroundColor = '';
+    expect(isDarkBackground(document, window)).toBe(false);
+    expect(isDarkBackground(document, {})).toBe(false);
   });
 });
 
@@ -76,6 +113,15 @@ describe('placeBadge', () => {
     expect(badges[0].previousElementSibling.id).toBe('title');
     expect(badges[0].nextElementSibling.id).toBe('price');
     expect(badges[0].textContent).toBe('SizeL');
+  });
+
+  it('appends inside a table cell instead of creating a new column', () => {
+    document.body.innerHTML = '<table><tr><td id="cell"><a>Title</a></td><td>$1</td></tr></table>';
+    const cell = document.getElementById('cell');
+    placeBadge(cell, createBadge(document, options));
+    placeBadge(cell, createBadge(document, [{ label: 'Size', value: 'L' }]));
+    expect(cell.querySelectorAll(`.${BADGE_CLASS}`)).toHaveLength(1);
+    expect(document.querySelector('tr').children).toHaveLength(2);
   });
 
   it('works when the anchor has no parent element', () => {

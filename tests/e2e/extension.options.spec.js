@@ -1,11 +1,21 @@
 import { test, expect } from './extension-fixtures.js';
 import { AMAZON } from './helpers.js';
 
+/**
+ * @param {import('@playwright/test').Page} page
+ */
+async function settled(page) {
+  await page.waitForFunction(() => {
+    const form = document.getElementById('settings');
+    return form && form.dataset.ready === 'true' && !form.dataset.pending;
+  });
+}
+
 test.describe('options page', () => {
   test('settings persist and change what the content script does', async ({ page, extensionId, context }) => {
     await page.goto(`chrome-extension://${extensionId}/options.html`);
     await expect(page.locator('h1')).toHaveText('Amazon Order Options');
-    await expect(page.locator('#settings')).toHaveAttribute('data-ready', 'true');
+    await settled(page);
 
     const showOnOrders = page.locator('[name="showOnOrders"]');
     await expect(showOnOrders).toBeChecked();
@@ -13,8 +23,9 @@ test.describe('options page', () => {
     await expect(page.locator('#status')).toHaveText('Saved.');
 
     await page.selectOption('[name="badgeStyle"]', 'plain');
+    await settled(page);
     await page.reload();
-    await expect(page.locator('#settings')).toHaveAttribute('data-ready', 'true');
+    await settled(page);
     await expect(page.locator('[name="showOnOrders"]')).not.toBeChecked();
     await expect(page.locator('[name="badgeStyle"]')).toHaveValue('plain');
     await expect(page.locator('[name="showOnReturns"]')).toBeChecked();
@@ -32,9 +43,10 @@ test.describe('options page', () => {
 
   test('disabling product fetching falls back to the title and says so', async ({ page, extensionId, context, requestLog }) => {
     await page.goto(`chrome-extension://${extensionId}/options.html`);
-    await expect(page.locator('#settings')).toHaveAttribute('data-ready', 'true');
+    await settled(page);
     await page.locator('[name="fetchProductPages"]').uncheck();
     await expect(page.locator('#status')).toHaveText('Saved.');
+    await settled(page);
 
     const orders = await context.newPage();
     await orders.goto(`${AMAZON}/gp/css/order-history`);

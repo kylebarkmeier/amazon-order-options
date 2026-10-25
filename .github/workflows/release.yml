@@ -35,6 +35,8 @@ jobs:
       attestations: write
     env:
       VERSION: ${{ github.ref_name }}
+      # The secrets context is not allowed in a step-level `if`, so the check happens here.
+      HAS_AMO: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -60,7 +62,7 @@ jobs:
 
       - name: Sign the Firefox add-on through AMO (only when secrets are configured)
         id: sign
-        if: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
+        if: env.HAS_AMO == 'true'
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}

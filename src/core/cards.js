@@ -1,6 +1,8 @@
-import { asinFromHref, PAGE_TYPES, isOrderId } from './page-detector.js';
-import { extractImageId, imageIdFromElement } from './image-id.js';
-import { collectHints } from './dom-hints.js';
+import { asinFromHref, PAGE_TYPES, isLineItemId } from './page-detector.js';
+import { imageIdFromImg } from './image-id.js';
+import { collectHints, isMetadataLabel, isOptionLabel } from './dom-hints.js';
+import { EXCLUDED_SELECTOR, HIDDEN_SELECTOR, PRODUCT_LINK_SELECTOR } from './selectors.js';
+import { fullText, TRUNCATED_TITLE } from './text.js';
 
 /**
  * Finds the "item cards" on a page: one element per purchased item, together
@@ -9,61 +11,42 @@ import { collectHints } from './dom-hints.js';
  * Amazon's markup differs between the orders list, order details, the return
  * cart, the return status page and the mobile site, so the scan is based on
  * what every item has in common: a product image with an Amazon image id, and
- * a title that is either a link to /dp/ASIN or a bold text next to the image.
+ * a title next to it. The card is the smallest ancestor of the image that
+ * holds a title and no second product image.
  */
 
-/** Containers that hold recommendations, navigation or the cart rail. */
-export const EXCLUDED_SELECTOR = [
-  '#nav-belt',
-  '#navbar',
-  '#nav-main',
-  '#navFooter',
-  '.ewc-content',
-  '#ewc',
-  '#rhf',
-  '#rhf-container',
-  '[data-a-carousel-options]',
-  '.a-carousel-container',
-  '#rufus-plus-button-menu-items-container',
-  '[cel_widget_id*="recommend"]',
-  '[cel_widget_id*="buy-again"]',
-  '[cel_widget_id*="similarities"]',
-  '[data-component="buyAgain"]',
-  '.a-popover-preload',
-  '#items-summary-section',
-  '#cart-items-images-v2',
-  '.aoo-badge',
-].join(', ');
-
-const CARD_SELECTOR = [
+/** Ancestors that may be an item card. Element.matches treats the list as a union; order carries no priority. */
+export const CARD_SELECTOR = [
   '.a-fixed-left-grid',
   '.item-box',
   '.orc-item',
   '.orc-returnable-item-details',
-  '.item-return-history-card .a-row.a-grid-vertical-align',
   '.a-box-inner',
-  '.a-row.a-grid-vertical-align',
   '.a-section.a-spacing-base',
   '.a-row',
   'li',
+  'tr',
 ].join(', ');
+
+const ORDER_ID_IN_TEXT = /\b\d{3}-\d{7}-\d{7}\b/g;
 
 /**
  * @typedef {Object} CardInfo
  * @property {Element} element the card container
- * @property {Element} anchorPoint where the badge should be inserted after
+ * @property {Element} anchorPoint element the badge is inserted after (or into, for table cells)
  * @property {string|null} asin
  * @property {string|null} imageId
  * @property {string|null} title
  * @property {string|null} orderId
+ * @property {string|null} lineItemId Amazon's order line item id when the page exposes it
  * @property {import('./variation-parser.js').OptionPair[]} hints
- * @property {Element|null} truncatedTitle an `.a-truncate-cut` element, if any
+ * @property {Element|null} truncatedTitle element whose text should be replaced by the full title
  */
 
 /**
  * @param {Document} doc
  * @param {string} pageType one of PAGE_TYPES
- * @param {{orderId?: string|null}} [context]
+ * @param {{orderId?: string|null, lineItemId?: string|null, skip?: (card: Element) => boolean}} [context]
  * @returns {CardInfo[]}
  */
 export function findItemCards(doc, pageType, context = {}) {
@@ -72,23 +55,22 @@ export function findItemCards(doc, pageType, context = {}) {
   const root = doc.querySelector('#a-page') || doc.body;
   if (!root) return results;
 
-  // A single-order page may only state the order id once, outside the cards.
-  const singleOrderPage = [PAGE_TYPES.ORDER_DETAILS, PAGE_TYPES.RETURNS_CART, PAGE_TYPES.RETURNS_PREP, PAGE_TYPES.RETURNS_OTHER].includes(pageType);
-  const pageOrderId = context.orderId || (singleOrderPage ? findOrderIdInText(root) : null);
+  // A single-order page may state the order id once, outside the cards. The
+  // returns-centre home page lists many orders, so it is not one of these.
+  const singleOrderPage = [PAGE_TYPES.ORDER_DETAILS, PAGE_TYPES.RETURNS_CART, PAGE_TYPES.RETURNS_PREP].includes(pageType);
+  const pageOrderId = context.orderId || (singleOrderPage ? uniqueOrderIdIn(root) : null);
 
   for (const img of root.querySelectorAll('img')) {
-    const imageId = extractImageId(img.getAttribute('src') || img.getAttribute('data-src'));
+    const imageId = imageIdFromImg(img);
     if (!imageId) continue;
-    if (img.closest(EXCLUDED_SELECTOR)) continue;
-    if (img.closest('.aok-hidden, [hidden]')) continue;
+    if (img.closest(EXCLUDED_SELECTOR) || img.closest(HIDDEN_SELECTOR)) continue;
 
-    const card = pickCard(img);
-    if (!card || used.has(card)) continue;
+    const found = pickCard(img);
+    if (!found || used.has(found.card)) continue;
+    used.add(found.card);
+    if (context.skip && context.skip(found.card)) continue;
 
-    const titleInfo = findTitle(card, img);
-    if (!titleInfo) continue;
-
-    used.add(card);
+    const { card, titleInfo } = found;
     const probe = { imageId, title: titleInfo.title };
     results.push({
       element: card,
@@ -97,42 +79,51 @@ export function findItemCards(doc, pageType, context = {}) {
       imageId,
       title: titleInfo.title,
       orderId: pageType === PAGE_TYPES.UNKNOWN ? null : findOrderIdFor(card) || pageOrderId,
+      lineItemId: findLineItemIdFor(card),
       hints: collectHints(card, probe),
       truncatedTitle: titleInfo.truncatedTitle,
     });
   }
+
+  // A page about one line item (return cart or status reached from an order) names it in the URL.
+  if (results.length === 1 && context.lineItemId && !results[0].lineItemId) results[0].lineItemId = context.lineItemId;
   return results;
 }
 
 /**
- * Walks up from the image to the smallest ancestor that also contains a title.
+ * Walks up from the image to the smallest candidate ancestor that holds a
+ * title. An ancestor holding a second product image is a group of items, not
+ * a card, and ends the walk.
  *
  * @param {Element} img
- * @returns {Element|null}
+ * @returns {{card: Element, titleInfo: ReturnType<typeof findTitle>}|null}
  */
 function pickCard(img) {
   let node = img.parentElement;
-  let depth = 0;
-  while (node && depth < 8) {
-    if (node.matches(CARD_SELECTOR) && hasTitleText(node, img)) return node;
-    node = node.parentElement;
-    depth += 1;
+  for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+    if (!node.matches(CARD_SELECTOR)) continue;
+    if (countProductImages(node) > 1) return null;
+    const titleInfo = findTitle(node, img);
+    if (titleInfo) return { card: node, titleInfo };
   }
   return null;
 }
 
 /**
  * @param {Element} node
- * @param {Element} img
- * @returns {boolean}
+ * @returns {number}
  */
-function hasTitleText(node, img) {
-  const text = node.textContent.replace(/\s+/g, ' ').trim();
-  if (text.length < 12) return false;
-  // The card must contain something other than the image and its wrapper.
-  const imgOwnText = (img.closest('a') || img).textContent.replace(/\s+/g, ' ').trim();
-  return text.length > imgOwnText.length + 8;
+function countProductImages(node) {
+  let count = 0;
+  for (const img of node.querySelectorAll('img')) {
+    if (!imageIdFromImg(img) || img.closest(HIDDEN_SELECTOR) || img.closest(EXCLUDED_SELECTOR)) continue;
+    count += 1;
+    if (count > 1) break;
+  }
+  return count;
 }
+
+const TEXT_TITLE_SELECTORS = ['h4', 'h3', '.a-truncate', '.a-text-bold', '[class*="title"]', '.a-size-base', '.a-size-medium', 'span', 'div'];
 
 /**
  * @param {Element} card
@@ -140,49 +131,32 @@ function hasTitleText(node, img) {
  * @returns {{title: string, asin: string|null, anchorPoint: Element, truncatedTitle: Element|null}|null}
  */
 function findTitle(card, img) {
-  const linkSelectors = [
-    '[data-component="itemTitle"] a[href]',
-    '.yohtmlc-product-title a[href]',
-    'a.a-link-normal[href*="/dp/"]',
-    'a[href*="/gp/product/"]',
-    'a[href*="/dp/"]',
-  ];
+  const linkSelectors = ['[data-component="itemTitle"] a[href]', '.yohtmlc-product-title a[href]', PRODUCT_LINK_SELECTOR];
   for (const selector of linkSelectors) {
     for (const link of card.querySelectorAll(selector)) {
-      if (link.contains(img) || link.closest(EXCLUDED_SELECTOR)) continue;
+      if (link.closest(EXCLUDED_SELECTOR) || link.closest(HIDDEN_SELECTOR)) continue;
       const title = fullText(link);
       if (title.length >= 8) {
         return {
           title,
           asin: asinFromHref(link.getAttribute('href')),
-          anchorPoint: blockAncestor(link, card),
+          anchorPoint: anchorFor(link, card),
           truncatedTitle: truncatedElement(link, title),
         };
       }
     }
   }
 
-  const textSelectors = [
-    'h4',
-    'h3',
-    '.a-truncate',
-    '.a-text-bold',
-    '[class*="title"]',
-    '.a-size-base',
-    '.a-size-medium',
-    'span',
-    'div',
-  ];
-  for (const selector of textSelectors) {
+  for (const selector of TEXT_TITLE_SELECTORS) {
     for (const el of card.querySelectorAll(selector)) {
-      if (el.contains(img) || el.closest(EXCLUDED_SELECTOR) || el.closest('.aok-hidden')) continue;
-      if (el.closest('.a-button, button, select')) continue;
+      if (el.contains(img) || el.closest(EXCLUDED_SELECTOR) || el.closest(HIDDEN_SELECTOR)) continue;
+      if (el.closest('.a-button, button, select, label')) continue;
       const title = fullText(el);
-      if (title.length < 12 || /:\s*\S/.test(title) || /^\$|^Quantity|^Qty/i.test(title)) continue;
+      if (title.length < 12 || looksLikeMetadataRow(title) || /^[$€£¥₹]/.test(title)) continue;
       return {
         title,
         asin: null,
-        anchorPoint: blockAncestor(el, card),
+        anchorPoint: anchorFor(el, card),
         truncatedTitle: truncatedElement(el, title),
       };
     }
@@ -190,8 +164,17 @@ function findTitle(card, img) {
   return null;
 }
 
-/** Matches a title Amazon cut short. */
-export const TRUNCATED_TITLE = /(\.{3}|…)$/;
+/**
+ * "Quantity: 1" and "Size: M" are rows, "Spider-Man: No Way Home" is a title.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function looksLikeMetadataRow(text) {
+  const match = /^([^:]{1,40}):\s*\S/.exec(text);
+  if (!match) return false;
+  return isOptionLabel(match[1]) || isMetadataLabel(match[1]);
+}
 
 /**
  * Returns the element whose text should be replaced when the full title
@@ -208,45 +191,23 @@ function truncatedElement(el, fullTitle) {
   return null;
 }
 
-/**
- * Looks for the order id on the card, then on the order it belongs to.
- *
- * @param {Element} card
- * @returns {string|null}
- */
-function findOrderIdFor(card) {
-  const own = findOrderIdInText(card);
-  if (own) return own;
-  for (const selector of ['.order-card', '.js-order-card', '.a-box-group', '.item-return-history-card', '.a-box']) {
-    const group = card.closest(selector);
-    const id = group ? findOrderIdInText(group) : null;
-    if (id) return id;
-  }
-  return null;
-}
+const BLOCK_TAGS = /^(DIV|LI|P|H[1-6]|TD|TH|DD|DT|SECTION|ARTICLE)$/;
 
 /**
- * Prefers the untruncated copy of the text when Amazon provides one.
+ * The element to place the badge after: the title's nearest block ancestor
+ * below the card that is not inside a link, so the badge never becomes link
+ * content. For a link-wrapped card this is the link itself.
  *
- * @param {Element} el
- * @returns {string}
- */
-export function fullText(el) {
-  const full = el.querySelector('.a-truncate-full');
-  const source = full && full.textContent.trim() ? full : el;
-  return source.textContent.replace(/\s+/g, ' ').trim();
-}
-
-/**
  * @param {Element} el
  * @param {Element} card
  * @returns {Element}
  */
-function blockAncestor(el, card) {
+function anchorFor(el, card) {
   let node = el;
   while (node.parentElement && node.parentElement !== card) {
-    const display = node.tagName;
-    if (/^(DIV|LI|P|H[1-6]|TD)$/.test(display)) return node;
+    const enclosingLink = node.parentElement.closest('a');
+    const insideLink = enclosingLink && card.contains(enclosingLink);
+    if (BLOCK_TAGS.test(node.tagName) && !insideLink) return node;
     node = node.parentElement;
   }
   return node;
@@ -262,13 +223,64 @@ function asinFromImageLink(img) {
 }
 
 /**
- * @param {Element} root
+ * The order id of a card: on the card, else on the order group it sits in.
+ * A container that mentions several orders gives no answer.
+ *
+ * @param {Element} card
  * @returns {string|null}
  */
-export function findOrderIdInText(root) {
-  const text = root.textContent || '';
-  const match = /\b(\d{3}-\d{7}-\d{7})\b/.exec(text);
-  return match && isOrderId(match[1]) ? match[1] : null;
+function findOrderIdFor(card) {
+  const own = uniqueOrderIdIn(card);
+  if (own) return own;
+  for (const selector of ['.order-card', '.js-order-card', '.a-box-group', '.item-return-history-card', '.a-box']) {
+    const group = card.closest(selector);
+    if (!group) continue;
+    const ids = orderIdsIn(group);
+    if (ids.length === 1) return ids[0];
+    if (ids.length > 1) return null;
+  }
+  return null;
 }
 
-export { imageIdFromElement };
+/**
+ * @param {Element} root
+ * @returns {string[]} distinct order ids in document order
+ */
+export function orderIdsIn(root) {
+  return [...new Set((root.textContent || '').match(ORDER_ID_IN_TEXT) || [])];
+}
+
+/**
+ * @param {Element} root
+ * @returns {string|null} the order id when the text names exactly one
+ */
+export function uniqueOrderIdIn(root) {
+  const ids = orderIdsIn(root);
+  return ids.length === 1 ? ids[0] : null;
+}
+
+/**
+ * Return pages carry the order line item id in the ids Amazon gives the
+ * card's "Details" popover and container.
+ *
+ * @param {Element} card
+ * @returns {string|null}
+ */
+export function findLineItemIdFor(card) {
+  const popover = card.querySelector('[id^="a-popover-"][id*="itemDetails"]');
+  if (popover) {
+    const match = /^a-popover-([a-z0-9]+)-/.exec(popover.id);
+    if (match && isLineItemId(match[1])) return match[1];
+  }
+  const orcItem = card.closest('.orc-item[id]') || card.querySelector('.orc-item[id]');
+  if (orcItem) {
+    const match = /^([a-z0-9]+)-/.exec(orcItem.id);
+    if (match && isLineItemId(match[1])) return match[1];
+  }
+  const keyed = card.closest('[data-item-key]') || card.querySelector('[data-item-key]');
+  if (keyed) {
+    const first = (keyed.getAttribute('data-item-key') || '').split('-')[0];
+    if (isLineItemId(first)) return first;
+  }
+  return null;
+}
