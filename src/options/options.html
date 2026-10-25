@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Amazon Order Options</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #0f1111;
+        --muted: #565959;
+        --border: #d5d9d9;
+        --accent: #f1c232;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #1b1d1f; --fg: #e3e6e6; --muted: #a7abab; --border: #3a3f44; }
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        min-width: 280px;
+        max-width: 480px;
+        font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 { font-size: 16px; margin: 0 0 12px; }
+      fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+      legend { color: var(--muted); font-size: 12px; padding: 0 4px; }
+      label { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+      label input { margin-top: 3px; }
+      label span small { display: block; color: var(--muted); }
+      select { font: inherit; padding: 4px 6px; }
+      .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
+      #status { color: var(--muted); font-size: 12px; min-height: 1.2em; }
+      footer { margin-top: 10px; font-size: 12px; color: var(--muted); }
+      a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1>Amazon Order Options</h1>
+    <form id="settings">
+      <fieldset>
+        <legend>Where to show options</legend>
+        <label><input type="checkbox" name="showOnOrders" /><span>Orders list and order details<small>Adds a size/color badge under each item.</small></span></label>
+        <label><input type="checkbox" name="showOnReturns" /><span>Return pages<small>Return cart, return status and your returns.</small></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>How to find options</legend>
+        <label><input type="checkbox" name="fetchProductPages" /><span>Read the product page<small>Loads the item's product page in the background to read the exact variation. Most accurate.</small></span></label>
+        <label><input type="checkbox" name="fetchOrderPages" /><span>Read the order details page<small>Needed on return pages, which do not expose which variation you bought.</small></span></label>
+        <label><input type="checkbox" name="useTitleHeuristics" /><span>Guess from the title<small>When nothing else works, reads a trailing size such as "- M" out of the title. Marked "(from title)".</small></span></label>
+        <label><input type="checkbox" name="expandTitles" /><span>Expand truncated titles<small>Replaces "…" titles with the full title when it is known.</small></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Appearance</legend>
+        <div class="row">
+          <span>Badge style</span>
+          <select name="badgeStyle">
+            <option value="highlight">Highlighted pills</option>
+            <option value="plain">Plain text</option>
+          </select>
+        </div>
+      </fieldset>
+      <div id="status" aria-live="polite"></div>
+    </form>
+    <footer>Changes save as you make them. Reload an Amazon tab to apply.</footer>
+    <script src="options.js"></script>
+  </body>
+</html>

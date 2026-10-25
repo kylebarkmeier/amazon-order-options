@@ -1,0 +1,47 @@
+{
+  "name": "amazon-order-options",
+  "version": "1.0.0",
+  "description": "Browser extension and userscript that shows the size, color and other selected options for items on Amazon order and return pages.",
+  "private": true,
+  "type": "module",
+  "author": "Kyle Barkmeier",
+  "license": "MIT",
+  "homepage": "https://github.com/kylebarkmeier/amazon-order-options",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kylebarkmeier/amazon-order-options.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kylebarkmeier/amazon-order-options/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:chrome": "node scripts/build.mjs chrome",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "build:userscript": "node scripts/build.mjs userscript",
+    "package": "npm run build && node scripts/package.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "lint": "eslint .",
+    "lint:webext": "web-ext lint --source-dir dist/firefox --warnings-as-errors",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run --coverage",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium firefox webkit",
+    "check": "npm run lint && npm run test:unit && npm run build && npm run lint:webext && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.50.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "jsdom": "^26.0.0",
+    "vitest": "^3.0.0",
+    "web-ext": "^8.0.0"
+  }
+}

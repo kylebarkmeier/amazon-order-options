@@ -1,0 +1,107 @@
+name: Release
+
+# Pushing a tag such as v1.2.3 builds everything, runs the checks, and
+# publishes a GitHub release with:
+#   amazon-order-options-chrome-<version>.zip    unpacked-extension zip for Chromium browsers
+#   amazon-order-options-firefox-<version>.zip   Firefox source zip (for AMO upload or temporary load)
+#   amazon-order-options-firefox-<version>.xpi   signed Firefox add-on, only when AMO secrets are set
+#   amazon-order-options.user.js                 Tampermonkey / Violentmonkey / Greasemonkey script
+#
+# The userscript's @updateURL points at the "latest" alias of this asset, so
+# userscript managers update themselves after every release.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, check and publish
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Check that the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$VERSION" ]; then
+            echo "::error::Tag $VERSION does not match package.json version v$version. Bump package.json first."
+            exit 1
+          fi
+
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run package
+      - run: npm run lint:webext
+
+      - name: Sign the Firefox add-on through AMO (only when secrets are configured)
+        id: sign
+        if: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          npx web-ext sign \
+            --source-dir dist/firefox \
+            --artifacts-dir dist/signed \
+            --channel unlisted \
+            --api-key "$WEB_EXT_API_KEY" \
+            --api-secret "$WEB_EXT_API_SECRET"
+          xpi=$(ls dist/signed/*.xpi | head -n 1)
+          cp "$xpi" "dist/amazon-order-options-firefox-${VERSION#v}.xpi"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          version="${VERSION#v}"
+          repo="${{ github.repository }}"
+          base="https://github.com/$repo/releases/download/$VERSION"
+          {
+            awk -v ver="$version" '
+              $0 ~ "^## \\[" ver "\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md
+            echo
+            echo "## Install"
+            echo
+            echo "**Chrome, Edge, Brave, Kiwi and other Chromium browsers**"
+            echo "1. Download [amazon-order-options-chrome-$version.zip]($base/amazon-order-options-chrome-$version.zip) and unzip it."
+            echo "2. Open \`chrome://extensions\`, turn on Developer mode, choose **Load unpacked**, pick the folder."
+            echo
+            echo "**Firefox (desktop and Android)**"
+            if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+              echo "- Download [amazon-order-options-firefox-$version.xpi]($base/amazon-order-options-firefox-$version.xpi). Desktop: open the file in Firefox and approve the install. Android: enable the debug menu (Settings, About Firefox, tap the logo five times), then Settings, Install extension from file."
+            else
+              echo "- Download [amazon-order-options-firefox-$version.zip]($base/amazon-order-options-firefox-$version.zip). Desktop: \`about:debugging#/runtime/this-firefox\`, **Load Temporary Add-on**, pick the zip. For a permanent install the zip must be signed by AMO; see the README."
+            fi
+            echo
+            echo "**Tampermonkey, Violentmonkey, Greasemonkey**"
+            echo "- Open [amazon-order-options.user.js]($base/amazon-order-options.user.js) and confirm the install. Updates arrive automatically."
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets="dist/amazon-order-options-chrome-${VERSION#v}.zip dist/amazon-order-options-firefox-${VERSION#v}.zip dist/amazon-order-options.user.js"
+          if [ -f "dist/amazon-order-options-firefox-${VERSION#v}.xpi" ]; then
+            assets="$assets dist/amazon-order-options-firefox-${VERSION#v}.xpi"
+          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file release-notes.md \
+            --latest \
+            $assets

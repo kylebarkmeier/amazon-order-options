@@ -1,0 +1,72 @@
+name: Pull request checks
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  title:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the pull request title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! echo "$TITLE" | grep -Eq '^(feat|fix|docs|test|ci|build|chore|refactor|perf|revert)(\([a-z0-9-]+\))?!?: .{3,}'; then
+            echo "::error::Title must look like 'type(scope): summary', e.g. 'fix(returns): read size from hidden details'."
+            echo "Allowed types: feat fix docs test ci build chore refactor perf revert"
+            exit 1
+          fi
+
+  size:
+    name: Label by size
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Add a size label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          CHANGES: ${{ github.event.pull_request.additions + github.event.pull_request.deletions }}
+        run: |
+          if   [ "$CHANGES" -lt 50 ];  then label="size: XS"
+          elif [ "$CHANGES" -lt 200 ]; then label="size: S"
+          elif [ "$CHANGES" -lt 600 ]; then label="size: M"
+          elif [ "$CHANGES" -lt 1500 ]; then label="size: L"
+          else label="size: XL"; fi
+          for existing in "size: XS" "size: S" "size: M" "size: L" "size: XL"; do
+            [ "$existing" = "$label" ] && continue
+            gh pr edit "$NUMBER" --repo "$REPO" --remove-label "$existing" 2>/dev/null || true
+          done
+          gh label create "$label" --repo "$REPO" --color ededed --force >/dev/null 2>&1 || true
+          gh pr edit "$NUMBER" --repo "$REPO" --add-label "$label"
+
+  changelog:
+    name: Changelog updated
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require a CHANGELOG entry for user-facing changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if echo "$TITLE" | grep -Eq '^(docs|test|ci|chore|build)'; then
+            echo "No changelog entry needed for '$TITLE'"; exit 0
+          fi
+          if git diff --name-only "$BASE" "$HEAD" | grep -q '^CHANGELOG.md$'; then
+            echo "CHANGELOG.md updated"
+          else
+            echo "::error::This change looks user-facing but CHANGELOG.md was not updated. Add a line under 'Unreleased'."
+            exit 1
+          fi

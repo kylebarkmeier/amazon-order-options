@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question
+    url: https://github.com/kylebarkmeier/amazon-order-options/discussions
+    about: Ask how something works or whether a page is supported.

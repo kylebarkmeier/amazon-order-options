@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+web-ext-artifacts/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.idea/
+.vscode/
