@@ -93,15 +93,23 @@ jobs:
           retention-days: 30
 
   # One job per browser engine: the three Chromium projects share one install.
+  # The jobs run in Playwright's own image, which ships the browsers and every
+  # system library they need, so no apt-get runs: Ubuntu's package mirrors have
+  # taken over ten minutes to deliver the WebKit dependencies. The image tag
+  # must match @playwright/test in package.json; the check step says when the
+  # two drift apart and installs the matching browser in the meantime.
   e2e:
     name: End-to-end (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v${{ matrix.playwright }}-noble
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        playwright: ['1.64.1']
         include:
           - browser: chromium
             projects: --project=chromium-extension --project=userscript-chromium --project=userscript-mobile
@@ -119,8 +127,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Check that the image matches @playwright/test
+        env:
+          IMAGE_VERSION: ${{ matrix.playwright }}
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          installed=$(node -p "require('@playwright/test/package.json').version")
+          if [ "$installed" != "$IMAGE_VERSION" ]; then
+            echo "::warning::@playwright/test is $installed but this job runs in the v$IMAGE_VERSION image. Update the playwright value in the e2e matrix of ci.yml. Installing the matching browser for now."
+            npx playwright install "$BROWSER"
+          fi
       - run: npx playwright test ${{ matrix.projects }}
       - name: Upload Playwright report
         if: failure()
