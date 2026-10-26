@@ -9,7 +9,11 @@
 # commit-signing keys, store credentials) are listed in docs/github-security.md.
 #
 # Environment knobs:
-#   REQUIRE_REVIEWS=1          require one approving code-owner review on main (default 1)
+#   REQUIRE_REVIEWS=1          require one approving review on main (default 1); CodeRabbit
+#                              approves once its comments are resolved, so a single
+#                              maintainer can satisfy this
+#   REQUIRE_CODE_OWNER_REVIEW=0  make that review come from a CODEOWNERS entry (default 0,
+#                              because an app such as CodeRabbit is never a code owner)
 #   REQUIRE_SIGNED_COMMITS=1   reject unsigned commits and tags (default 1)
 #   RELEASE_REVIEWER=<login>   who must approve release runs (default: the authenticated user)
 set -euo pipefail
@@ -17,6 +21,7 @@ set -euo pipefail
 REPO="${1:?usage: $0 owner/repo}"
 OWNER="${REPO%%/*}"
 REQUIRE_REVIEWS="${REQUIRE_REVIEWS:-1}"
+REQUIRE_CODE_OWNER_REVIEW="${REQUIRE_CODE_OWNER_REVIEW:-0}"
 REQUIRE_SIGNED_COMMITS="${REQUIRE_SIGNED_COMMITS:-1}"
 RELEASE_REVIEWER="${RELEASE_REVIEWER:-$(gh api user --jq .login)}"
 
@@ -113,7 +118,10 @@ fi
 step "ruleset for main: pull requests only, required checks, linear history, no deletion"
 REVIEW_COUNT=0
 CODE_OWNER=false
-if [ "$REQUIRE_REVIEWS" = "1" ]; then REVIEW_COUNT=1; CODE_OWNER=true; fi
+if [ "$REQUIRE_REVIEWS" = "1" ]; then
+  REVIEW_COUNT=1
+  if [ "$REQUIRE_CODE_OWNER_REVIEW" = "1" ]; then CODE_OWNER=true; fi
+fi
 SIGNATURE_RULE=""
 if [ "$REQUIRE_SIGNED_COMMITS" = "1" ]; then SIGNATURE_RULE='{ "type": "required_signatures" },'; fi
 

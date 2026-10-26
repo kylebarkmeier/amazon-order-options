@@ -1,0 +1,159 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews every pull request against main. Its approval, given
+# once every comment it raised is resolved, is the approving review the
+# branch ruleset requires. The maintainer is still requested through
+# CODEOWNERS and can override any verdict with the admin bypass.
+
+language: en-US
+early_access: false
+
+tone_instructions: >-
+  Be direct and specific. Point at the line, say what breaks and how, and
+  propose the fix. Skip praise and filler. Treat correctness, security and
+  the privacy promises in SECURITY.md as blocking; treat style as a nit.
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  high_level_summary_placeholder: '@coderabbitai summary'
+  auto_title_placeholder: '@coderabbitai'
+  review_status: true
+  commit_status: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: false
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: false
+  poem: false
+  abort_on_close: true
+
+  path_filters:
+    - '!dist/**'
+    - '!coverage/**'
+    - '!test-results/**'
+    - '!package-lock.json'
+
+  path_instructions:
+    - path: 'src/**/*.js'
+      instructions: >-
+        This code runs inside Amazon pages as a content script and as a
+        Tampermonkey userscript. Flag anything that sends data off the Amazon
+        origin, stores anything beyond the variation cache and settings, or
+        fetches with session cookies where an anonymous request would do.
+        Modules under src/core must stay free of browser APIs so they run in
+        jsdom and in the userscript. Check selectors and regular expressions
+        against the fixtures in tests/fixtures/pages. Marketplace hosts come
+        only from src/core/hosts.js and shared selectors only from
+        src/core/selectors.js.
+    - path: 'src/platform/**'
+      instructions: >-
+        Storage must resolve the extension API from the script's own global
+        (Firefox content scripts and userscript managers do not expose it on
+        the page window) and fall back cleanly. Every branch needs a unit test.
+    - path: 'manifest/**'
+      instructions: >-
+        Manifest V3 for Chrome and Firefox. No host_permissions, no remote
+        code, no new permissions without a stated reason. The Firefox add-on
+        id and data_collection_permissions must not change.
+    - path: '.github/workflows/*.yml'
+      instructions: >-
+        Every action must be pinned to a full commit SHA with the version in a
+        trailing comment. Workflows start with permissions: {} and jobs ask for
+        the least they need. Untrusted values such as pull request titles are
+        read through environment variables, never inlined into run scripts.
+        Expressions have no arithmetic. Every job has timeout-minutes. The
+        secrets context is not allowed in a step-level if.
+    - path: 'scripts/**'
+      instructions: >-
+        Build and setup scripts. No third-party packages at runtime, no shell
+        string interpolation of untrusted input, and bash scripts must pass
+        shellcheck. setup-github.sh must stay idempotent.
+    - path: 'tests/**'
+      instructions: >-
+        Fixtures are sanitised copies of Amazon pages: no real order numbers,
+        names, addresses or account data. ASINs are ten characters and line
+        item ids lowercase alphanumeric. End-to-end tests must never contact
+        Amazon; every request goes through tests/fixtures/routes.js.
+    - path: '**/*.md'
+      instructions: >-
+        Plain prose. Flag marketing language and claims that the code does not
+        back up. Changes a user would notice need a CHANGELOG entry under
+        Unreleased.
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    base_branches:
+      - main
+    ignore_title_keywords:
+      - WIP
+    ignore_usernames: []
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+
+  pre_merge_checks:
+    title:
+      mode: warning
+      requirements: >-
+        Conventional format type(scope): summary, where type is one of feat,
+        fix, docs, test, ci, build, chore, refactor, perf, revert.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: off
+
+  tools:
+    eslint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+    osv-scanner:
+      enabled: true
+    languagetool:
+      enabled: true
+      level: default
+    github-checks:
+      enabled: true
+      timeout_ms: 300000
+    biome:
+      enabled: false
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - docs/github-security.md
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto

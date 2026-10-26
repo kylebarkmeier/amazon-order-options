@@ -91,8 +91,10 @@ Single sources of truth, so a change is made once:
   docs, test, ci, build, chore, refactor, perf, revert.
 - Add a line under **Unreleased** in `CHANGELOG.md` for anything a user would
   notice. CI reminds you.
-- CI must be green and the PR needs one approving review (CODEOWNERS) before
-  it merges. Squash merge is used so `main` stays linear.
+- CI must be green and the PR needs one approving review before it merges.
+  CodeRabbit reviews every PR, requests changes until each comment is
+  resolved, and then approves; reply to its comments or fix the code, and
+  resolve the thread. Squash merge is used so `main` stays linear.
 - Do not commit anything from a real Amazon account: no order numbers, no
   names, no addresses, no full page dumps.
 
@@ -104,7 +106,8 @@ Single sources of truth, so a change is made once:
 - no force pushes, no deletions
 - required checks: **CI passed**, **Conventional title**, **Dependency
   review**, **Changelog updated**, **Analyze (javascript-typescript)**
-- review from a code owner, with all review threads resolved
+- one approving review (CodeRabbit gives it once its comments are resolved),
+  with all review threads resolved
 - no new high-severity CodeQL alerts
 
 `v*` tags are protected too: admins only, never moved or deleted. The full
