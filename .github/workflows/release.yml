@@ -12,7 +12,7 @@ name: Release
 # anyone can verify with `gh attestation verify <file> --owner <owner>`.
 #
 # The job runs in the "release" environment. If that environment has required
-# reviewers (see scripts/setup-github.sh), the publish waits for approval.
+# reviewers (see docs/github-security.md), the publish waits for approval.
 #
 # The userscript's @updateURL points at the "latest" alias of its asset, so
 # userscript managers update themselves after every release.

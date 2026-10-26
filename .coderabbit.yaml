@@ -72,9 +72,8 @@ reviews:
         secrets context is not allowed in a step-level if.
     - path: 'scripts/**'
       instructions: >-
-        Build and setup scripts. No third-party packages at runtime, no shell
-        string interpolation of untrusted input, and bash scripts must pass
-        shellcheck. setup-github.sh must stay idempotent.
+        Build scripts. No third-party packages at runtime and no shell string
+        interpolation of untrusted input.
     - path: 'tests/**'
       instructions: >-
         Fixtures are sanitised copies of Amazon pages: no real order numbers,

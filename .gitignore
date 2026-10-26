@@ -11,3 +11,6 @@ Thumbs.db
 .env
 .idea/
 .vscode/
+
+# Local operations tooling (GitHub setup, release helpers). Never committed.
+devops/

@@ -24,15 +24,11 @@ These live in the repository and apply the moment the code is pushed.
 | The maintainer is requested as reviewer on every change | `.github/CODEOWNERS` |
 | Vulnerability reporting instructions and the data-handling statement | `SECURITY.md` |
 
-## What `scripts/setup-github.sh` applies through the API
+## What the maintainer applies through the API
 
-Run it once after creating the repository, with `gh` logged in as the owner:
-
-```bash
-scripts/setup-github.sh kylebarkmeier/amazon-order-options
-```
-
-It is safe to run again later; every call is idempotent.
+These settings are applied with a setup script that the maintainer keeps
+outside the repository, since it runs with an admin token. Every call it
+makes is idempotent, so it can be rerun to re-assert the settings.
 
 - **Merging**: squash only, branches deleted after merge, auto-merge allowed,
   "update branch" allowed, wiki and projects off.
@@ -55,7 +51,7 @@ It is safe to run again later; every call is idempotent.
 - **Ruleset `release tags`**: `v*` tags can only be created by admins and can
   never be moved or deleted.
 
-Knobs: `REQUIRE_REVIEWS=0` drops the one-approval requirement,
+The script's knobs: `REQUIRE_REVIEWS=0` drops the one-approval requirement,
 `REQUIRE_CODE_OWNER_REVIEW=1` insists that the review comes from a code owner
 (an app such as CodeRabbit never is one, so a single maintainer would then
 need the admin bypass on every merge), `REQUIRE_SIGNED_COMMITS=0` drops the

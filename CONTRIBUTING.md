@@ -100,7 +100,7 @@ Single sources of truth, so a change is made once:
 
 ## Branch protection
 
-`main` is governed by a ruleset applied with `scripts/setup-github.sh`:
+`main` is governed by a ruleset the maintainer configures on GitHub:
 
 - pull requests only, squash merges, linear history, signed commits
 - no force pushes, no deletions
