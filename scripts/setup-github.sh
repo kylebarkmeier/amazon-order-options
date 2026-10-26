@@ -17,6 +17,9 @@
 #   REQUIRE_SIGNED_COMMITS=1   reject unsigned commits and tags (default 1)
 #   RELEASE_REVIEWER=<login>   who must approve release runs (default: the authenticated user)
 set -euo pipefail
+# When PowerShell starts Git Bash directly, the shell's own tools are not on
+# PATH. Put bash's directory first so nothing below depends on the caller.
+PATH="$(dirname "$BASH"):$PATH"
 
 REPO="${1:?usage: $0 owner/repo}"
 OWNER="${REPO%%/*}"
@@ -109,11 +112,14 @@ try api PUT /environments/release --input - <<EOF
   "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
 }
 EOF
-if ! api GET /environments/release/deployment-branch-policies --jq '.branch_policies[].name' 2>/dev/null | grep -qx 'v\*'; then
-  try api POST /environments/release/deployment-branch-policies --input - <<'EOF'
+EXISTING_POLICIES=$(api GET /environments/release/deployment-branch-policies --jq '.branch_policies[].name' 2>/dev/null || true)
+case "$EXISTING_POLICIES" in
+  *'v*'*) ;;
+  *) try api POST /environments/release/deployment-branch-policies --input - <<'EOF'
 { "name": "v*", "type": "tag" }
 EOF
-fi
+  ;;
+esac
 
 step "ruleset for main: pull requests only, required checks, linear history, no deletion"
 REVIEW_COUNT=0
@@ -125,7 +131,7 @@ fi
 SIGNATURE_RULE=""
 if [ "$REQUIRE_SIGNED_COMMITS" = "1" ]; then SIGNATURE_RULE='{ "type": "required_signatures" },'; fi
 
-MAIN_RULESET=$(cat <<EOF
+read -r -d '' MAIN_RULESET <<EOF || true
 {
   "name": "main",
   "target": "branch",
@@ -175,9 +181,8 @@ MAIN_RULESET=$(cat <<EOF
   ]
 }
 EOF
-)
 
-TAG_RULESET=$(cat <<EOF
+read -r -d '' TAG_RULESET <<EOF || true
 {
   "name": "release tags",
   "target": "tag",
@@ -195,7 +200,6 @@ TAG_RULESET=$(cat <<EOF
   ]
 }
 EOF
-)
 
 upsert_ruleset() {
   # Returns non-zero when the API refuses the ruleset, so the caller can report it.
@@ -230,14 +234,14 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
   printf 'Not applied (plan or repository type does not support them):\n'
   for item in "${SKIPPED[@]}"; do printf '  - %s\n' "$item"; done
 fi
-cat <<EOF
+while IFS= read -r line; do printf '%s\n' "$line"; done <<EOF
 Settings applied to https://github.com/$REPO
 
 Still needs a person (see docs/github-security.md):
   - two-factor authentication on the $OWNER account
   - a commit-signing key configured locally and added to GitHub$( [ "$REQUIRE_SIGNED_COMMITS" = "1" ] && printf ' (required: unsigned commits are now rejected on main)' )
   - WEB_EXT_API_KEY / WEB_EXT_API_SECRET secrets if Firefox builds should be signed
-$( [ "$REQUIRE_REVIEWS" = "1" ] && printf '  - note: one approving review is required. A single maintainer cannot approve their own PR;\n    use "Merge without waiting for requirements" (admin bypass, PR only) or rerun with REQUIRE_REVIEWS=0.\n' )
+$( [ "$REQUIRE_REVIEWS" = "1" ] && printf '  - the CodeRabbit GitHub App (https://github.com/apps/coderabbitai) installed on the repository:\n    its approval is the one review main requires. Without it, or with REQUIRE_CODE_OWNER_REVIEW=1,\n    a single maintainer must use the admin bypass or rerun with REQUIRE_REVIEWS=0.\n' )
 EOF
 if [ "${RULESET_FAILED:-0}" = "1" ]; then
   printf '\nOne or more rulesets failed to apply. Fix the error above and rerun.\n' >&2
