@@ -50,8 +50,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
-          CHANGES: ${{ github.event.pull_request.additions + github.event.pull_request.deletions }}
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
         run: |
+          CHANGES=$((ADDITIONS + DELETIONS))
           if   [ "$CHANGES" -lt 50 ];  then label="size: XS"
           elif [ "$CHANGES" -lt 200 ]; then label="size: S"
           elif [ "$CHANGES" -lt 600 ]; then label="size: M"
