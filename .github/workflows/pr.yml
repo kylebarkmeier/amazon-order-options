@@ -10,6 +10,7 @@ jobs:
   title:
     name: Conventional title
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions: {}
     steps:
       - name: Check the pull request title
@@ -25,6 +26,7 @@ jobs:
   dependency-review:
     name: Dependency review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -40,6 +42,7 @@ jobs:
   size:
     name: Label by size
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event.pull_request.draft == false
     permissions:
       pull-requests: write
@@ -69,6 +72,7 @@ jobs:
   changelog:
     name: Changelog updated
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event.pull_request.draft == false
     permissions:
       contents: read
