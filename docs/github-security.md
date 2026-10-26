@@ -20,7 +20,8 @@ These live in the repository and apply the moment the code is pushed.
 | Releases run in the `release` environment, write SHA-256 checksums and attach signed SLSA build provenance for every asset | `.github/workflows/release.yml` |
 | `npm ci` with a lockfile and `ignore-scripts=true`, so no package can run code at install time | `.npmrc`, `package-lock.json` |
 | No runtime dependencies at all; the shipped extension is only the code in `src/` | `package.json` |
-| A code owner must review every change | `.github/CODEOWNERS` |
+| CodeRabbit reviews every pull request, requests changes until its comments are resolved, then approves; that approval is the review the ruleset requires | `.coderabbit.yaml` |
+| The maintainer is requested as reviewer on every change | `.github/CODEOWNERS` |
 | Vulnerability reporting instructions and the data-handling statement | `SECURITY.md` |
 
 ## What `scripts/setup-github.sh` applies through the API
@@ -45,17 +46,20 @@ It is safe to run again later; every call is idempotent.
   until you approve it in the Actions tab. A leaked token or a mistaken tag
   cannot publish a release on its own.
 - **Ruleset `main`**: no direct pushes, no force pushes, no deletion, linear
-  history, signed commits, pull requests only with squash merges, review
-  threads resolved, and these checks green and up to date with `main`:
+  history, signed commits, pull requests only with squash merges, one
+  approving review (CodeRabbit gives it once its comments are resolved),
+  review threads resolved, and these checks green and up to date with `main`:
   *CI passed*, *Conventional title*, *Dependency review*, *Changelog
   updated*, *Analyze (javascript-typescript)*. New high-severity CodeQL
   alerts block the merge. Admins may bypass, but only through a pull request.
 - **Ruleset `release tags`**: `v*` tags can only be created by admins and can
   never be moved or deleted.
 
-Knobs: `REQUIRE_REVIEWS=0` drops the one-approval requirement (sensible for a
-single maintainer, who cannot approve their own PR), `REQUIRE_SIGNED_COMMITS=0`
-drops the signature rules, `RELEASE_REVIEWER=<login>` changes who approves
+Knobs: `REQUIRE_REVIEWS=0` drops the one-approval requirement,
+`REQUIRE_CODE_OWNER_REVIEW=1` insists that the review comes from a code owner
+(an app such as CodeRabbit never is one, so a single maintainer would then
+need the admin bypass on every merge), `REQUIRE_SIGNED_COMMITS=0` drops the
+signature rules, `RELEASE_REVIEWER=<login>` changes who approves
 releases.
 
 ## What only you can do
@@ -77,20 +81,25 @@ releases.
    GPG keys, New SSH key, key type "Signing Key"). Commits made in the GitHub
    web editor are signed automatically. If you would rather not sign, rerun
    the setup script with `REQUIRE_SIGNED_COMMITS=0`.
-3. **Firefox signing secrets** (optional). Create API credentials at
+3. **Install CodeRabbit.** Open <https://github.com/apps/coderabbitai>, choose
+   **Install**, and grant it this repository. It reads `.coderabbit.yaml`,
+   reviews every pull request on its own, and approves once its comments are
+   resolved. Without it, the required review can only come from the admin
+   bypass.
+4. **Firefox signing secrets** (optional). Create API credentials at
    <https://addons.mozilla.org/developers/addon/api/key/> and add them as
    repository secrets `WEB_EXT_API_KEY` and `WEB_EXT_API_SECRET`. Repository
    secrets are only exposed to the `release` environment job, which you
    approve by hand.
-4. **Approve each release.** After pushing a `v*` tag, open the Actions tab,
+5. **Approve each release.** After pushing a `v*` tag, open the Actions tab,
    find the Release run and approve the `release` environment. Nothing is
    published until you do.
-5. **Check the Security tab** after the first push: CodeQL and Scorecard
+6. **Check the Security tab** after the first push: CodeQL and Scorecard
    results appear there, as do Dependabot and secret-scanning alerts.
-6. **Keep `gh` and personal tokens tight.** Prefer fine-grained personal
+7. **Keep `gh` and personal tokens tight.** Prefer fine-grained personal
    access tokens scoped to this repository with an expiry; never classic
    tokens with `repo` scope.
-7. **Store listings.** When publishing to the Chrome Web Store or AMO, enable
+8. **Store listings.** When publishing to the Chrome Web Store or AMO, enable
    two-factor authentication on those developer accounts too, and upload the
    exact release assets whose checksums and attestations you can verify:
 
