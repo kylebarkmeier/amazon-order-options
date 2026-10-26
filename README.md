@@ -4,10 +4,39 @@ Shows the size, colour and other options you picked for each item on Amazon's
 order and return pages. Available as a Chrome extension, a Firefox extension
 (desktop and Android) and a Tampermonkey userscript.
 
+[![CI](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/ci.yml/badge.svg)](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/codeql.yml/badge.svg)](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kylebarkmeier/amazon-order-options/badge)](https://scorecard.dev/viewer/?uri=github.com/kylebarkmeier/amazon-order-options)
+[![Release](https://img.shields.io/github/v/release/kylebarkmeier/amazon-order-options?display_name=tag)](https://github.com/kylebarkmeier/amazon-order-options/releases/latest)
+[![CodeRabbit reviews](https://img.shields.io/coderabbit/prs/github/kylebarkmeier/amazon-order-options?label=CodeRabbit%20reviews)](https://github.com/kylebarkmeier/amazon-order-options/pulls?q=is%3Apr+reviewed-by%3Acoderabbitai)
+[![License: MIT](https://img.shields.io/github/license/kylebarkmeier/amazon-order-options)](LICENSE)
+
 Amazon's return flow shows a truncated title and nothing else. If you ordered
 the same jacket in two sizes, the return cart gives you two identical rows and
 no way to tell which is which. The size is usually in Amazon's own data; it is
 just not drawn. This project draws it.
+
+| | |
+| --- | --- |
+| **Install** | [Latest release](https://github.com/kylebarkmeier/amazon-order-options/releases/latest) for Chrome, Firefox and userscript managers, see [Install](#install) |
+| **What changed** | [CHANGELOG.md](CHANGELOG.md) |
+| **Something wrong?** | [Report a bug](https://github.com/kylebarkmeier/amazon-order-options/issues/new?template=bug_report.yml) or [request a feature](https://github.com/kylebarkmeier/amazon-order-options/issues/new?template=feature_request.yml) |
+| **Security** | [SECURITY.md](SECURITY.md) for what is stored and how to verify a download, [private vulnerability report](https://github.com/kylebarkmeier/amazon-order-options/security/advisories/new) |
+| **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md), [open pull requests](https://github.com/kylebarkmeier/amazon-order-options/pulls) |
+| **Build status** | [CI](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/ci.yml), [CodeQL](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/codeql.yml), [Scorecard](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/scorecard.yml), [Releases](https://github.com/kylebarkmeier/amazon-order-options/actions/workflows/release.yml) |
+
+## Contents
+
+- [What it looks like](#what-it-looks-like)
+- [Supported pages](#supported-pages)
+- [Install](#install)
+- [How it works](#how-it-works)
+- [Options](#options)
+- [Privacy and security](#privacy-and-security)
+- [Limitations](#limitations)
+- [Development](#development)
+- [Releases and verification](#releases-and-verification)
+- [License](#license)
 
 ## What it looks like
 
@@ -178,8 +207,44 @@ The end-to-end tests never contact Amazon. Every request to an Amazon host is
 answered from `tests/fixtures/pages`, which are hand-written copies of the
 page structure with made-up order numbers and ASINs.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, the PR process
-and how to add a page.
+Every pull request runs the same checks on GitHub, plus a few that only make
+sense there:
+
+| Check | What it does | Workflow |
+| --- | --- | --- |
+| CI | Lint, unit tests with coverage thresholds, build, packaging, `addons-linter`, icon check, end-to-end tests in Chromium, Firefox and WebKit | [ci.yml](.github/workflows/ci.yml) |
+| Pull request checks | Conventional title, dependency review, changelog reminder, size label | [pr.yml](.github/workflows/pr.yml) |
+| CodeQL | Static analysis with the security-extended query set, on every push and weekly | [codeql.yml](.github/workflows/codeql.yml) |
+| OpenSSF Scorecard | Supply-chain posture, published to the Security tab and the badge above | [scorecard.yml](.github/workflows/scorecard.yml) |
+| CodeRabbit | Automated code review on every pull request; its approval is the review the branch rules require | [.coderabbit.yaml](.coderabbit.yaml) |
+
+`main` only accepts squash-merged pull requests with green checks, a review
+and signed commits. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project
+layout, the PR process and how to add a page, and
+[docs/github-security.md](docs/github-security.md) for the full list of
+repository controls.
+
+## Releases and verification
+
+Pushing a `v*` tag runs the [release workflow](.github/workflows/release.yml),
+which builds every artifact, waits for the maintainer's approval, and
+publishes a [GitHub release](https://github.com/kylebarkmeier/amazon-order-options/releases)
+with these assets:
+
+| Asset | For |
+| --- | --- |
+| `amazon-order-options-chrome-<version>.zip` | Chrome, Edge, Brave and other Chromium browsers (Load unpacked) |
+| `amazon-order-options-firefox-<version>.zip` | Firefox source zip for AMO or a temporary load |
+| `amazon-order-options-firefox-<version>.xpi` | Signed Firefox build for desktop and Android, when AMO signing is configured |
+| `amazon-order-options.user.js` | Tampermonkey, Violentmonkey and Greasemonkey; updates itself through the `latest` alias |
+
+Each asset comes with a `.sha256` file and a signed build provenance
+attestation, so a download can be checked against what the workflow built:
+
+```bash
+sha256sum -c amazon-order-options-chrome-<version>.zip.sha256
+gh attestation verify amazon-order-options-chrome-<version>.zip --owner kylebarkmeier
+```
 
 ## License
 
